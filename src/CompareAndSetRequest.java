@@ -61,10 +61,10 @@ final class CompareAndSetRequest extends HBaseRpc
     ByteString.copyFromUtf8("org.apache.hadoop.hbase.filter.BinaryComparator");
 
   /** New value.  */
-  private final PutRequest put;
+  protected final PutRequest put;
 
   /** Expected value.  */
-  private final byte[] expected;
+  protected final byte[] expected;
 
   /**
    * Constructor.
@@ -75,7 +75,8 @@ final class CompareAndSetRequest extends HBaseRpc
   public CompareAndSetRequest(final PutRequest put,
                               final byte[] expected) {
     super(put.table(), put.key());
-    KeyValue.checkValue(expected);
+    if (expected != null)
+      KeyValue.checkValue(expected);
     this.put = put;
     this.expected = expected;
   }

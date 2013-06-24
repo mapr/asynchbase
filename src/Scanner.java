@@ -26,6 +26,9 @@
  */
 package org.hbase.async;
 
+import static org.hbase.async.HBaseClient.EMPTY_ARRAY;
+
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,10 +36,18 @@ import java.util.Arrays;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.util.CharsetUtil;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.MapRHTable;
+import com.mapr.fs.MapRResultScanner;
+import com.mapr.fs.proto.Dbfilters.ComparatorProto;
+import com.mapr.fs.proto.Dbfilters.CompareOpProto;
+import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
+import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
+import com.mapr.fs.proto.Dbfilters.RowFilterProto;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
@@ -193,15 +204,42 @@ public final class Scanner {
    */
   private GetNextRowsRequest get_next_rows_request;
 
+  private boolean isMapRTable;
+  private MapRThreadPool.ScanRpcRunnable scanRpcRunnable;
+  private FilterMsg filterMsg;
+  private Exception filterException;
+  public MapRResultScanner mresultScanner;
+
+  /**
+   * Constructor.
+   * <strong>This byte array will NOT be copied.</strong>
+   * @param table The non-empty name of the table to use.
+   */
+  Scanner(final HBaseClient client, final byte[] table, MapRHTable mTable) {
+    this.isMapRTable = (mTable != null) ? true : false;
+    if (!isMapRTable) {
+      KeyValue.checkTable(table);
+    } else {
+      scanRpcRunnable = client.getMapRThreadPool().newScanner(mTable, this);
+    }
+    this.client = client;
+    this.table = table;
+    this.mresultScanner = null;
+    this.filterMsg = null;
+    this.filterException = null;
+  }
+
   /**
    * Constructor.
    * <strong>This byte array will NOT be copied.</strong>
    * @param table The non-empty name of the table to use.
    */
   Scanner(final HBaseClient client, final byte[] table) {
-    KeyValue.checkTable(table);
-    this.client = client;
-    this.table = table;
+    this(client, table, null);
+  }  
+  
+  public MapRResultScanner getMapRResultScanner() {
+    return mresultScanner;
   }
 
   /**
@@ -210,6 +248,27 @@ public final class Scanner {
    */
   public byte[] getCurrentKey() {
     return start_key;
+  }
+
+  public byte[] getStopKey() {
+    return stop_key;
+  }
+
+  public byte[][] getFamilies() {
+    return families;
+  }
+
+  public byte[][][] getQualifiers() {
+    return qualifiers;
+  }
+
+  public int getMaxNumRows() {
+    return max_num_rows;
+  }
+
+  // MapR addition
+  public FilterMsg getFilterMsg() {
+    return filterMsg;
   }
 
   /**
@@ -389,9 +448,16 @@ public final class Scanner {
    * @param regexp The regular expression with which to filter the row keys.
    */
   public void setKeyRegexp(final String regexp) {
-    filter = new KeyRegexpFilter(regexp);
+    setKeyRegexp(regexp, CharsetUtil.ISO_8859_1);
   }
 
+  private static final int kRegexStringComparator           = 0xe2d7ba40;
+  private static final int kRowFilter                       = 0x469dbd04;
+  
+  private static String getFilterId(int hashCode) {
+    return String.format("%08x", hashCode);
+  }
+  
   /**
    * Sets a regular expression to filter results based on the row key.
    * <p>
@@ -405,7 +471,35 @@ public final class Scanner {
    * scanner.
    */
   public void setKeyRegexp(final String regexp, final Charset charset) {
-    filter = new KeyRegexpFilter(regexp, charset);
+    if (isMapRTable) {
+      try {
+        RegexStringComparatorProto rcp = 
+            RegexStringComparatorProto.newBuilder()
+            .setPattern(ByteString.copyFrom(regexp.getBytes(charset)))
+            .setIsUTF8(charset.equals(CharsetUtil.UTF_8))
+            .build();
+        ComparatorProto cp = ComparatorProto.newBuilder()
+            .setName(getFilterId(kRegexStringComparator))
+            .setSerializedComparator(rcp.toByteString())
+            .build();
+        FilterComparatorProto.Builder fcp = FilterComparatorProto.newBuilder()
+            .setCompareOp(CompareOpProto.EQUAL)
+            .setComparator(cp);
+        ByteString state = RowFilterProto.newBuilder()
+            .setFilterComparator(fcp)
+            .build()
+            .toByteString();
+        filterMsg = FilterMsg.newBuilder()
+            .setId(getFilterId(kRowFilter))
+            .setSerializedState(state)
+            .build();
+      } catch (Exception e) {
+        filterException = e;
+      }
+    }
+    else {
+      filter = new KeyRegexpFilter(regexp, charset);
+    }
   }
 
   /**
@@ -692,6 +786,17 @@ public final class Scanner {
    * @see #setMaxNumKeyValues
    */
   public Deferred<ArrayList<ArrayList<KeyValue>>> nextRows() {
+    if (isMapRTable) {
+      if (filterException != null) {        
+        return Deferred.fromError(filterException);
+      }
+      GetNextRowsRequest dummyRpc = new GetNextRowsRequest();
+      final Deferred<ArrayList<ArrayList<KeyValue>>> d =
+        (Deferred) dummyRpc.getDeferred().addCallbacks(got_next_row, nextRowErrback());
+      scanRpcRunnable.addRequest(dummyRpc);
+      return d;
+    }
+
     if (region == DONE) {  // We're already done scanning.
       return Deferred.fromResult(null);
     } else if (region == null) {  // We need to open the scanner first.
@@ -758,7 +863,11 @@ public final class Scanner {
           throw new InvalidResponseException(ArrayList.class, response);
         }
 
-        if (rows == null) {  // We're done scanning this region.
+        if ((rows == null) || (rows.size() == 0)) {  // We're done scanning this region.
+          if (isMapRTable) {
+            start_key = stop_key = EMPTY_ARRAY;
+            return null;
+          }
           return scanFinished(resp);
         }
 
@@ -824,8 +933,10 @@ public final class Scanner {
    * The {@link Object} has not special meaning and can be {@code null}.
    */
   public Deferred<Object> close() {
-    if (region == null || region == DONE) {
-      return Deferred.fromResult(null);
+    if (!isMapRTable) {      
+      if (region == null || region == DONE) {
+        return Deferred.fromResult(null);
+      }
     }
     return client.closeScanner(this).addBoth(closedCallback());
   }

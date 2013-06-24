@@ -80,6 +80,7 @@ abstract class BatchableRpc extends HBaseRpc
   BatchableRpc(final byte[] table,
                final byte[] key, final byte[][] families,
                final long timestamp, final long lockid) {
+    // Set a method name here
     super(table, key);
     this.families = families;
     this.timestamp = timestamp;

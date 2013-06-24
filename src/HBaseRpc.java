@@ -35,6 +35,7 @@ import com.google.protobuf.CodedOutputStream;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Parser;
 
+import org.apache.hadoop.conf.Configuration;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.util.CharsetUtil;
@@ -414,6 +415,13 @@ public abstract class HBaseRpc {
   final byte[] table;  // package-private for subclasses, not other classes.
 
   /**
+   * Hold the table mapping rule in a static field and initialize it
+   * at class load. Once constructed, MapRTableMappingRules is thread safe.
+   */
+  static final MapRTableMappingRules tableMappingRules =
+      new MapRTableMappingRules(new Configuration());
+
+  /**
    * The row key for which this RPC is.
    * {@code null} if this RPC isn't for a particular row key.
    * Invariants:
@@ -525,8 +533,11 @@ public abstract class HBaseRpc {
    * @param row The name of the row this RPC is for.
    */
   HBaseRpc(final byte[] table, final byte[] key) {
-    KeyValue.checkTable(table);
-    KeyValue.checkKey(key);
+    if (!tableMappingRules.isMapRTable(Bytes.toString(table))) {
+      // TODO: MapR
+      KeyValue.checkTable(table);
+      KeyValue.checkKey(key);
+    }
     this.table = table;
     this.key = key;
   }

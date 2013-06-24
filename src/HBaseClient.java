@@ -49,6 +49,8 @@ import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import com.google.common.cache.LoadingCache;
 import com.google.protobuf.InvalidProtocolBufferException;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.zookeeper.AsyncCallback;
 import org.apache.zookeeper.KeeperException.Code;
 import org.apache.zookeeper.WatchedEvent;
@@ -79,6 +81,10 @@ import org.jboss.netty.util.TimerTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.cache.LoadingCache;
+import com.mapr.fs.MapRHTable;
+import com.mapr.fs.ShimLoader;
+import com.mapr.fs.jni.MapRPut;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
@@ -472,10 +478,18 @@ public final class HBaseClient {
   /** Number of region clients closed due to being idle.  */
   private final Counter idle_connections_closed = new Counter();
 
+  /** MapR Tables cache */
+  private ConcurrentHashMap<String, MapRHTable> MapRHTableCache = new ConcurrentHashMap<String, MapRHTable>();
+  private Configuration conf;
+  private MapRThreadPool mPool;
+  private MapRTableMappingRules mTableMappingRules;
+  private boolean flushOnPut; // no buferring
+  public static final String CONFIG_PARAM_FLUSH_ON_PUT = "fs.mapr.asynchbase.flushonput";
+
   /**
    * Constructor.
    * @param quorum_spec The specification of the quorum, e.g.
-   * {@code "host1,host2,host3"}.
+   * {@code "host1[:port1],host2[:port2],host3[:port3]"}.
    */
   public HBaseClient(final String quorum_spec) {
     this(quorum_spec, "/hbase");
@@ -484,7 +498,7 @@ public final class HBaseClient {
   /**
    * Constructor.
    * @param quorum_spec The specification of the quorum, e.g.
-   * {@code "host1,host2,host3"}.
+   * {@code "host1[:port1],host2[:port2],host3[:port3]"}.
    * @param base_path The base path under which is the znode for the
    * -ROOT- region.
    */
@@ -500,7 +514,7 @@ public final class HBaseClient {
    * pool, or blocking its threads will prevent this {@code HBaseClient}
    * from working properly or lead to poor performance.
    * @param quorum_spec The specification of the quorum, e.g.
-   * {@code "host1,host2,host3"}.
+   * {@code "host1[:port1],host2[:port2],host3[:port3]"}.
    * @param base_path The base path under which is the znode for the
    * -ROOT- region.
    * @param executor The executor from which to obtain threads for NIO
@@ -519,12 +533,37 @@ public final class HBaseClient {
     this(quorum_spec, base_path, new CustomChannelFactory(executor));
   }
 
+  private HBaseClient(final String quorum_spec, final String base_path,
+                      final Config config,
+                      final ClientSocketChannelFactory channel_factory) {
+    this.channel_factory = channel_factory;
+    zkclient = new ZKClient(quorum_spec, base_path);
+    this.config = config;
+    rpc_timeout = config.getInt("hbase.rpc.timeout");
+    timer = newTimer(config, "HBaseClient");
+    rpc_timeout_timer = newTimer(config, "RPC Timeout Timer");
+    flush_interval = config.getShort("hbase.rpcs.buffered_flush_interval");
+    increment_buffer_size = config.getInt("hbase.increments.buffer_size");
+    nsre_low_watermark = config.getShort("hbase.nsre.low_watermark");
+    nsre_high_watermark = config.getShort("hbase.nsre.high_watermark");
+
+    // For MapR
+    conf = new Configuration();
+    mPool = new MapRThreadPool();
+    mTableMappingRules = new MapRTableMappingRules(conf);
+    flushOnPut = conf.getBoolean(CONFIG_PARAM_FLUSH_ON_PUT, false);
+  }
+
+  public MapRThreadPool getMapRThreadPool() {
+    return mPool;
+  }
+
   /**
    * Constructor for advanced users with special needs.
    * <p>
    * Most users don't need to use this constructor.
    * @param quorum_spec The specification of the quorum, e.g.
-   * {@code "host1,host2,host3"}.
+   * {@code "host1[:port1],host2[:port2],host3[:port3]"}.
    * @param base_path The base path under which is the znode for the
    * -ROOT- region.
    * @param channel_factory A custom factory to use to create sockets.
@@ -535,16 +574,7 @@ public final class HBaseClient {
    */
   public HBaseClient(final String quorum_spec, final String base_path,
                      final ClientSocketChannelFactory channel_factory) {
-    this.channel_factory = channel_factory;
-    zkclient = new ZKClient(quorum_spec, base_path);
-    config = new Config();
-    rpc_timeout = config.getInt("hbase.rpc.timeout");
-    timer = newTimer(config, "HBaseClient");
-    rpc_timeout_timer = newTimer(config, "RPC Timeout Timer");
-    flush_interval = config.getShort("hbase.rpcs.buffered_flush_interval");
-    increment_buffer_size = config.getInt("hbase.increments.buffer_size");
-    nsre_low_watermark = config.getShort("hbase.nsre.low_watermark");
-    nsre_high_watermark = config.getShort("hbase.nsre.high_watermark");
+    this(quorum_spec, base_path, new Config(), channel_factory);
   }
   
   /**
@@ -592,17 +622,9 @@ public final class HBaseClient {
    */
   public HBaseClient(final Config config, 
       final ClientSocketChannelFactory channel_factory) {
-    this.channel_factory = channel_factory;
-    zkclient = new ZKClient(config.getString("hbase.zookeeper.quorum"), 
-        config.getString("hbase.zookeeper.znode.parent"));
-    this.config = config;
-    rpc_timeout = config.getInt("hbase.rpc.timeout");
-    timer = newTimer(config, "HBaseClient");
-    rpc_timeout_timer = newTimer(config, "RPC Timeout Timer");
-    flush_interval = config.getShort("hbase.rpcs.buffered_flush_interval");
-    increment_buffer_size = config.getInt("hbase.increments.buffer_size");
-    nsre_low_watermark = config.getShort("hbase.nsre.low_watermark");
-    nsre_high_watermark = config.getShort("hbase.nsre.high_watermark");
+    this(config.getString("hbase.zookeeper.quorum"), 
+         config.getString("hbase.zookeeper.znode.parent"),
+         config, channel_factory);
   }
   
   /**
@@ -681,6 +703,7 @@ public final class HBaseClient {
    * @since 1.3
    */
   public ClientStats stats() {
+    // TODO: MapR
     final LoadingCache<BufferedIncrement, BufferedIncrement.Amount> cache =
       increment_buffer;
     
@@ -804,9 +827,31 @@ public final class HBaseClient {
         }
       }
     }
+
+    // MapR Tables flush
+    for (MapRHTable mTable : MapRHTableCache.values()) {
+       Deferred deferred = new Deferred<Object>();
+       deferred.addErrback(MapRGenericErrback(mTable.getName()));
+       mPool.doFlush(deferred, mTable);
+       d.add(deferred);
+    }
+
     @SuppressWarnings("unchecked")
     final Deferred<Object> flushed = (Deferred) Deferred.group(d);
     return flushed;
+  }
+
+  private Callback<Object, Exception> MapRGenericErrback(final byte[] table) {
+    return new Callback<Object, Exception>() {
+
+      public Object call(final Exception e) {
+        return e;
+      }
+
+      public String toString() {
+        return "MapR generic errback";
+      }
+    };
   }
 
   /**
@@ -995,6 +1040,9 @@ public final class HBaseClient {
       public void run() {
         // This terminates the Executor.
         channel_factory.releaseExternalResources();
+
+        // MapR shutdown connections ?
+        mPool.shutdown();
       }
     };
 
@@ -1150,6 +1198,22 @@ public final class HBaseClient {
     } else {
       dummy = GetRequest.exists(table, probeKey(ZERO_ARRAY), family);
     }
+
+    String tableStr = Bytes.toString(table);
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      final Deferred<Object> d = dummy.getDeferred();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(table);
+        dummy.callback(e);
+        return Deferred.fromError(e);
+      }
+      mPool.sendRpc(dummy, mTable);
+      return d;
+    }
+
     @SuppressWarnings("unchecked")
     final Deferred<Object> d = (Deferred) sendRpcToRegion(dummy);
     return d;
@@ -1199,6 +1263,22 @@ public final class HBaseClient {
    */
   public Deferred<ArrayList<KeyValue>> get(final GetRequest request) {
     num_gets.increment();
+
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();  
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(request.table());
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+      final Deferred<Object> d = request.getDeferred();
+      mPool.sendRpc(request, mTable);
+      return d.addCallbacks(got, Callback.PASSTHROUGH);
+    }
+
     return sendRpcToRegion(request).addCallbacks(got, Callback.PASSTHROUGH);
   }
 
@@ -1225,6 +1305,17 @@ public final class HBaseClient {
    * @return A new scanner for this table.
    */
   public Scanner newScanner(final byte[] table) {
+    String tableStr = Bytes.toString(table);
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();  
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        throw new TableNotFoundException(table);
+      }
+      return new Scanner(this, table, mTable);
+    }
+
     return new Scanner(this, table);
   }
 
@@ -1235,9 +1326,16 @@ public final class HBaseClient {
    * @return A new scanner for this table.
    */
   public Scanner newScanner(final String table) {
+    Path p = mTableMappingRules.getMapRTablePath(table);
+    if (p != null) {
+      MapRHTable mTable = getMapRTable(p.toString());
+      return new Scanner(this, table.getBytes(), mTable);
+    }
+
     return new Scanner(this, table.getBytes());
   }
 
+  // Not used by MapR tables
   /**
    * Package-private access point for {@link Scanner}s to open themselves.
    * @param scanner The scanner to open.
@@ -1260,6 +1358,7 @@ public final class HBaseClient {
       });
   }
 
+  // Not used by MapR tables
   /** Singleton callback to handle responses of "openScanner" RPCs.  */
   private static final Callback<Object, Object> scanner_opened =
     new Callback<Object, Object>() {
@@ -1278,6 +1377,7 @@ public final class HBaseClient {
       }
     };
 
+  // Not used by MapR tables
   /**
    * Returns the client currently known to hose the given region, or NULL.
    */
@@ -1325,6 +1425,23 @@ public final class HBaseClient {
    * The {@link Object} has not special meaning and can be {@code null}.
    */
   Deferred<Object> closeScanner(final Scanner scanner) {
+      
+    String tableStr = Bytes.toString(scanner.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();  
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(scanner.table());
+        return Deferred.fromError(e);
+      }
+      
+      Deferred d = new Deferred<Object>();
+      //d.addErrback(MapRGenericErrback(tableStr));
+      mPool.closeScanner(d, mTable, scanner);
+      return d;
+    }
+    
     final RegionInfo region = scanner.currentRegion();
     final RegionClient client = clientFor(region);
     if (client == null) {
@@ -1352,10 +1469,28 @@ public final class HBaseClient {
    */
   public Deferred<Long> atomicIncrement(final AtomicIncrementRequest request) {
     num_atomic_increments.increment();
+
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(request.table());
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+      final Deferred<Object> d = request.getDeferred();
+      mPool.sendRpc(request, mTable);
+      return d.addCallbacks(icv_done, Callback.PASSTHROUGH);
+    }
+
     return sendRpcToRegion(request).addCallbacks(icv_done,
                                                  Callback.PASSTHROUGH);
   }
 
+  // NOTE: MapR tables don't need to do anything special.
+  // This function will eventually call atomicIncrement()
   /**
    * Buffers a durable atomic increment for coalescing.
    * <p>
@@ -1547,6 +1682,34 @@ public final class HBaseClient {
    */
   public Deferred<Object> put(final PutRequest request) {
     num_puts.increment();
+
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(request.table());
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+      final Deferred<Object> d = request.getDeferred();
+      MapRPut mPut = MapRConverter.toMapRPut(request, mTable,
+                                             Bytes.toString(request.family()),
+                                             mPool);
+      try {
+        if (flushOnPut) {
+          mTable.syncPut(mPut, false);
+        } else {
+          mTable.put(mPut);
+        }
+        return d;
+      } catch (Exception e) {
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+    }
+
     return sendRpcToRegion(request);
   }
 
@@ -1598,6 +1761,23 @@ public final class HBaseClient {
    */
   public Deferred<Boolean> compareAndSet(final PutRequest edit,
                                          final byte[] expected) {
+
+    String tableStr = Bytes.toString(edit.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(edit.table());
+        edit.callback(e);
+        return Deferred.fromError(e);
+      }
+      CompareAndSetRequest csr = new CompareAndSetRequest(edit, expected);
+      Deferred d = csr.getDeferred();
+      mPool.sendRpc(csr, mTable);
+      return d.addCallback(CAS_CB);
+    }
+
     return sendRpcToRegion(new CompareAndSetRequest(edit, expected))
       .addCallback(CAS_CB);
   }
@@ -1668,7 +1848,14 @@ public final class HBaseClient {
    * @see #unlockRow
    */
   public Deferred<RowLock> lockRow(final RowLockRequest request) {
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      throw new UnknownRowLockException("lockRow() and unlockRow() not supported for MapR Bolt tables", null);
+    }
+
     num_row_locks.increment();
+
     return sendRpcToRegion(request).addCallbacks(
       new Callback<RowLock, Object>() {
         public RowLock call(final Object response) {
@@ -1684,6 +1871,7 @@ public final class HBaseClient {
       }, Callback.PASSTHROUGH);
   }
 
+  // MapR: Nothing to do. We throw an exception for lockRow() itself.
   /**
    * Releases an explicit row lock.
    * <p>
@@ -1727,6 +1915,24 @@ public final class HBaseClient {
    */
   public Deferred<Object> delete(final DeleteRequest request) {
     num_deletes.increment();
+
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(request.table());
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+
+      final Deferred<Object> d = request.getDeferred();
+      d.addErrback(MapRGenericErrback(mTable.getName()));
+      mPool.sendRpc(request, mTable);
+      return d;
+    }
+
     return sendRpcToRegion(request);
   }
 
@@ -2171,10 +2377,15 @@ public final class HBaseClient {
     return rpc_timeout_timer;
   }
   
+  static {
+    ShimLoader.load();
+  }
+
   // --------------------------------------------------- //
   // Code that find regions (in our cache or using RPCs) //
   // --------------------------------------------------- //
 
+  // NOTE: MapR tables don't use this call
   /**
    * Locates the region in which the given row key for the given table is.
    * <p>
@@ -3352,7 +3563,13 @@ public final class HBaseClient {
    */
   protected final class ZKClient implements Watcher {
 
-    /** The specification of the quorum, e.g. "host1,host2,host3"  */
+    /**
+     * HBASE-3065 (r1151751) prepends meta-data in ZooKeeper files.
+     * The meta-data always starts with this magic byte.
+     */
+    private static final byte MAGIC = (byte) 0xFF;
+
+    /** The specification of the quorum, e.g. "host1[:port1],host2[:port2],host3[:port3]"  */
     private final String quorum_spec;
 
     /** The base path under which is the znode for the -ROOT- region.  */
@@ -3374,7 +3591,7 @@ public final class HBaseClient {
     /**
      * Constructor.
      * @param quorum_spec The specification of the quorum, e.g.
-     * {@code "host1,host2,host3"}.
+     * {@code "host1[:port1],host2[:port2],host3[:port3]"}.
      * @param base_path The base path under which is the znode for the
      * -ROOT- region.
      */
@@ -3840,4 +4057,19 @@ public final class HBaseClient {
     return port;
   }
 
+  public MapRHTable getMapRTable(final String table) {
+    // If found in cache return
+    if (MapRHTableCache.containsKey(table))
+      return MapRHTableCache.get(table);
+
+    // Otherwise do open
+    MapRHTable mTable = new MapRHTable();
+    try {
+      mTable.init(this.conf, new Path(table));
+      MapRHTableCache.put(table, mTable);
+    } catch (Exception e) {
+      return null;
+    }
+    return mTable;
+  }
 }
