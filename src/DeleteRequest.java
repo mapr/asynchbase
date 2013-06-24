@@ -567,7 +567,7 @@ public final class DeleteRequest extends BatchableRpc
                         final long[][] timestamps,
                         final long row_timestamp,
                         final long lockid) {
-    super(table, key, families == null ? WHOLE_ROW : families,
+    super(DELETE, table, key, families == null ? WHOLE_ROW : families,
         row_timestamp, lockid);
     checkParams(families, qualifiers, timestamps);
     this.qualifiers = qualifiers;
