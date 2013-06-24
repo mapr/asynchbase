@@ -365,7 +365,8 @@ public final class PutRequest extends BatchableRpc
     }
     for (int i = 0; i < qualifiers.length; i++) {
       KeyValue.checkQualifier(qualifiers[i]);
-      KeyValue.checkValue(values[i]);
+      if (values[i] != null)
+        KeyValue.checkValue(values[i]);
     }
     this.qualifiers = qualifiers;
     this.values = values;

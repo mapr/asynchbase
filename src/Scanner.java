@@ -26,6 +26,9 @@
  */
 package org.hbase.async;
 
+import static org.hbase.async.HBaseClient.EMPTY_ARRAY;
+
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -33,14 +36,20 @@ import java.util.Arrays;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.util.CharsetUtil;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.MapRHTable;
+import com.mapr.fs.MapRResultScanner;
+import com.mapr.fs.proto.Dbfilters.ComparatorProto;
+import com.mapr.fs.proto.Dbfilters.CompareOpProto;
+import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
+import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
+import com.mapr.fs.proto.Dbfilters.RowFilterProto;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-
-import static org.hbase.async.HBaseClient.EMPTY_ARRAY;
 
 /**
  * Creates a scanner to read data sequentially from HBase.
@@ -178,15 +187,42 @@ public final class Scanner {
    */
   private GetNextRowsRequest get_next_rows_request;
 
+  private boolean isMapRTable;
+  private MapRThreadPool.ScanRpcRunnable scanRpcRunnable;
+  private FilterMsg filterMsg;
+  private Exception filterException;
+  public MapRResultScanner mresultScanner;
+
+  /**
+   * Constructor.
+   * <strong>This byte array will NOT be copied.</strong>
+   * @param table The non-empty name of the table to use.
+   */
+  Scanner(final HBaseClient client, final byte[] table, MapRHTable mTable) {
+    this.isMapRTable = (mTable != null) ? true : false;
+    if (!isMapRTable) {
+      KeyValue.checkTable(table);
+    } else {
+      scanRpcRunnable = client.getMapRThreadPool().newScanner(mTable, this);
+    }
+    this.client = client;
+    this.table = table;
+    this.mresultScanner = null;
+    this.filterMsg = null;
+    this.filterException = null;
+  }
+
   /**
    * Constructor.
    * <strong>This byte array will NOT be copied.</strong>
    * @param table The non-empty name of the table to use.
    */
   Scanner(final HBaseClient client, final byte[] table) {
-    KeyValue.checkTable(table);
-    this.client = client;
-    this.table = table;
+    this(client, table, null);
+  }  
+  
+  public MapRResultScanner getMapRResultScanner() {
+    return mresultScanner;
   }
 
   /**
@@ -195,6 +231,31 @@ public final class Scanner {
    */
   public byte[] getCurrentKey() {
     return start_key;
+  }
+
+  public byte[] getStopKey() {
+    return stop_key;
+  }
+
+  public byte[] getFamily() {
+    return family;
+  }
+
+  public byte[][] getQualifiers() {
+    return qualifiers;
+  }
+
+  public byte[] getFilter() {
+    return filter;
+  }
+
+  public int getMaxNumRows() {
+    return max_num_rows;
+  }
+
+  // MapR addition
+  public FilterMsg getFilterMsg() {
+    return filterMsg;
   }
 
   /**
@@ -313,6 +374,13 @@ public final class Scanner {
     + ".hbase.filter.RegexStringComparator");
   private static final byte[] EQUAL = new byte[] { 'E', 'Q', 'U', 'A', 'L' };
 
+  private static final int kRegexStringComparator           = 0xe2d7ba40;
+  private static final int kRowFilter                       = 0x469dbd04;
+  
+  private static String getFilterId(int hashCode) {
+    return String.format("%08x", hashCode);
+  }
+  
   /**
    * Sets a regular expression to filter results based on the row key.
    * <p>
@@ -334,29 +402,57 @@ public final class Scanner {
    * scanner.
    */
   public void setKeyRegexp(final String regexp, final Charset charset) {
-    final byte[] regex = Bytes.UTF8(regexp);
-    final byte[] chars = Bytes.UTF8(charset.name());
-    filter = new byte[(1 + 40 + 2 + 5 + 1 + 1 + 1 + 52
-                       + 2 + regex.length + 2 + chars.length)];
-    final ChannelBuffer buf = ChannelBuffers.wrappedBuffer(filter);
-    buf.clear();  // Set the writerIndex to 0.
+    if (isMapRTable) {
+      try {
+        RegexStringComparatorProto rcp = 
+            RegexStringComparatorProto.newBuilder()
+            .setPattern(ByteString.copyFrom(regexp.getBytes(charset)))
+            .setIsUTF8(charset.equals(CharsetUtil.UTF_8))
+            .build();
+        ComparatorProto cp = ComparatorProto.newBuilder()
+            .setName(getFilterId(kRegexStringComparator))
+            .setSerializedComparator(rcp.toByteString())
+            .build();
+        FilterComparatorProto.Builder fcp = FilterComparatorProto.newBuilder()
+            .setCompareOp(CompareOpProto.EQUAL)
+            .setComparator(cp);
+        ByteString state = RowFilterProto.newBuilder()
+            .setFilterComparator(fcp)
+            .build()
+            .toByteString();
+        filterMsg = FilterMsg.newBuilder()
+            .setId(getFilterId(kRowFilter))
+            .setSerializedState(state)
+            .build();
+      } catch (Exception e) {
+        filterException = e;
+      }
+    }
+    else {
+      final byte[] regex = Bytes.UTF8(regexp);
+      final byte[] chars = Bytes.UTF8(charset.name());
+      filter = new byte[(1 + 40 + 2 + 5 + 1 + 1 + 1 + 52
+          + 2 + regex.length + 2 + chars.length)];
+      final ChannelBuffer buf = ChannelBuffers.wrappedBuffer(filter);
+      buf.clear();  // Set the writerIndex to 0.
 
-    buf.writeByte((byte) ROWFILTER.length);                     // 1
-    buf.writeBytes(ROWFILTER);                                  // 40
-    // writeUTF of the comparison operator
-    buf.writeShort(5);                                          // 2
-    buf.writeBytes(EQUAL);                                      // 5
-    // The comparator: a RegexStringComparator
-    buf.writeByte(54);  // Code for WritableByteArrayComparable // 1
-    buf.writeByte(0);   // Code for "this has no code".         // 1
-    buf.writeByte((byte) REGEXSTRINGCOMPARATOR.length);         // 1
-    buf.writeBytes(REGEXSTRINGCOMPARATOR);                      // 52
-    // writeUTF the regexp
-    buf.writeShort(regex.length);                               // 2
-    buf.writeBytes(regex);                                      // regex.length
-    // writeUTF the charset
-    buf.writeShort(chars.length);                               // 2
-    buf.writeBytes(chars);                                      // chars.length
+      buf.writeByte((byte) ROWFILTER.length);                     // 1
+      buf.writeBytes(ROWFILTER);                                  // 40
+      // writeUTF of the comparison operator
+      buf.writeShort(5);                                          // 2
+      buf.writeBytes(EQUAL);                                      // 5
+      // The comparator: a RegexStringComparator
+      buf.writeByte(54);  // Code for WritableByteArrayComparable // 1
+      buf.writeByte(0);   // Code for "this has no code".         // 1
+      buf.writeByte((byte) REGEXSTRINGCOMPARATOR.length);         // 1
+      buf.writeBytes(REGEXSTRINGCOMPARATOR);                      // 52
+      // writeUTF the regexp
+      buf.writeShort(regex.length);                               // 2
+      buf.writeBytes(regex);                                      // regex.length
+      // writeUTF the charset
+      buf.writeShort(chars.length);                               // 2
+      buf.writeBytes(chars);                                      // chars.length
+    }
   }
 
   /**
@@ -603,6 +699,17 @@ public final class Scanner {
    * @see #setMaxNumKeyValues
    */
   public Deferred<ArrayList<ArrayList<KeyValue>>> nextRows() {
+    if (isMapRTable) {
+      if (filterException != null) {        
+        return Deferred.fromError(filterException);
+      }
+      GetNextRowsRequest dummyRpc = new GetNextRowsRequest();
+      final Deferred<ArrayList<ArrayList<KeyValue>>> d =
+        (Deferred) dummyRpc.getDeferred().addCallbacks(got_next_row, nextRowErrback());
+      scanRpcRunnable.addRequest(dummyRpc);
+      return d;
+    }
+
     if (region == DONE) {  // We're already done scanning.
       return Deferred.fromResult(null);
     } else if (region == null) {  // We need to open the scanner first.
@@ -639,6 +746,11 @@ public final class Scanner {
     new Callback<Object, Object>() {
       public Object call(final Object response) {
         if (response == null) {  // We're done scanning this region.
+          if (isMapRTable) {
+            start_key = stop_key = EMPTY_ARRAY;
+            return null;
+          }
+
           final byte[] region_stop_key = region.stopKey();
           // Check to see if this region is the last we should scan (either
           // because (1) it's the last region or (3) because its stop_key is
@@ -667,8 +779,13 @@ public final class Scanner {
         }
         @SuppressWarnings("unchecked")  // I 3>> generics.
         final ArrayList<ArrayList<KeyValue>> rows = (ArrayList<ArrayList<KeyValue>>) response;
+        // No need to set this for each scan. MapR's scanner internally does this
         final ArrayList<KeyValue> lastrow = rows.get(rows.size() - 1);
         start_key = lastrow.get(0).key();
+        if (isMapRTable && rows.size() == 0) {
+          start_key = stop_key = EMPTY_ARRAY;
+          return null;
+        }
         return rows;
       }
       public String toString() {
@@ -729,8 +846,10 @@ public final class Scanner {
    * The {@link Object} has not special meaning and can be {@code null}.
    */
   public Deferred<Object> close() {
-    if (region == null || region == DONE) {
-      return Deferred.fromResult(null);
+    if (!isMapRTable) {      
+      if (region == null || region == DONE) {
+        return Deferred.fromResult(null);
+      }
     }
     return client.closeScanner(this).addBoth(closedCallback());
   }
