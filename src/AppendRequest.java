@@ -93,8 +93,8 @@ public final class AppendRequest extends BatchableRpc
    *   - qualifiers.length == values.length
    *   - qualifiers.length > 0
    */
-  private final byte[][] qualifiers;
-  private final byte[][] values;
+  private final byte[][][] qualifiers;
+  private final byte[][][] values;
   
   /** Whether or not to return the result of the append request */
   private boolean return_result = false;
@@ -145,7 +145,8 @@ public final class AppendRequest extends BatchableRpc
                     final byte[] family,
                     final byte[][] qualifiers,
                     final byte[][] values) {
-    this(table, key, family, qualifiers, values, KeyValue.TIMESTAMP_NOW, 
+    this(table, key, new byte[][] { family }, new byte[][][] { qualifiers },
+         new byte[][][] { values }, KeyValue.TIMESTAMP_NOW, 
         RowLock.NO_LOCK, false);
   }
 
@@ -186,7 +187,8 @@ public final class AppendRequest extends BatchableRpc
                     final byte[][] qualifiers,
                     final byte[][] values,
                     final long timestamp) {
-    this(table, key, family, qualifiers, values, timestamp, RowLock.NO_LOCK, false);
+    this(table, key, new byte[][] { family }, new byte[][][] { qualifiers },
+         new byte[][][] { values }, timestamp, RowLock.NO_LOCK, false);
   }
 
   /**
@@ -255,7 +257,8 @@ public final class AppendRequest extends BatchableRpc
                     final byte[][] values,
                     final long timestamp,
                     final RowLock lock) {
-    this(table, key, family, qualifiers, values, timestamp, lock.id(), false);
+    this(table, key, new byte[][] { family }, new byte[][][] { qualifiers },
+         new byte[][][] { values }, timestamp, lock.id(), false);
   }
 
   /**
@@ -334,9 +337,8 @@ public final class AppendRequest extends BatchableRpc
   private AppendRequest(final byte[] table,
                      final KeyValue kv,
                      final long lockid) {
-    super(table, kv.key(), kv.family(), kv.timestamp(), lockid);
-    this.qualifiers = new byte[][] { kv.qualifier() };
-    this.values = new byte[][] { kv.value() };
+    this(table, kv.key(), kv.family(),
+          kv.qualifier(), kv.value(), kv.timestamp(), lockid);
   }
 
   /** Private constructor.  */
@@ -347,34 +349,60 @@ public final class AppendRequest extends BatchableRpc
                      final byte[] value,
                      final long timestamp,
                      final long lockid) {
-    this(table, key, family, new byte[][] { qualifier }, new byte[][] { value },
-         timestamp, lockid, false);
+    this(table, key, new byte[][] { family }, new byte[][][] { { qualifier } },
+         new byte[][][] { { value } }, timestamp, lockid, false);
   }
 
   /** Private constructor.  */
   private AppendRequest(final byte[] table,
                      final byte[] key,
-                     final byte[] family,
-                     final byte[][] qualifiers,
-                     final byte[][] values,
+                     final byte[][] families,
+                     final byte[][][] qualifiers,
+                     final byte[][][] values,
                      final long timestamp,
                      final long lockid,
                      final boolean return_result) {
-    super(table, key, family, timestamp, lockid);
-    KeyValue.checkFamily(family);
-    
-    if (qualifiers.length != values.length) {
-      throw new IllegalArgumentException("Have " + qualifiers.length
-        + " qualifiers and " + values.length + " values.  Should be equal.");
-    } else if (qualifiers.length == 0) {
-      throw new IllegalArgumentException("Need at least one qualifier/value.");
-    }
-    for (int i = 0; i < qualifiers.length; i++) {
-      KeyValue.checkQualifier(qualifiers[i]);
-      KeyValue.checkValue(values[i]);
-    }
+    super(table, key, families, timestamp, lockid);
+    checkParams(families, qualifiers, values);
     this.qualifiers = qualifiers;
     this.values = values;
+    this.return_result = return_result;
+  }
+
+  private void checkParams(final byte[][] families,
+                           final byte[][][] qualifiers,
+                           final byte[][][] values) {
+    if (families.length != qualifiers.length) {
+      throw new IllegalArgumentException(String.format(
+          "Mismatch in number of families(%d) and qualifiers(%d) array size.",
+          families.length, qualifiers.length));
+    } else if (families.length != values.length) {
+      throw new IllegalArgumentException(String.format(
+          "Mismatch in number of families(%d) and values(%d) array size.",
+          families.length, values.length));
+    }
+
+    for (int idx = 0; idx < families.length; idx++) {
+      KeyValue.checkFamily(families[idx]);
+      if (qualifiers[idx] == null || qualifiers[idx].length == 0) {
+        throw new IllegalArgumentException(
+            "No qualifiers are specifed for family "
+            + families[idx] + " at index " + idx);
+      } else if (values[idx] == null || values[idx].length == 0) {
+        throw new IllegalArgumentException(
+            "No values are specifed for family "
+            + families[idx] + " at index " + idx);
+      } else if (qualifiers[idx].length != values[idx].length) {
+        throw new IllegalArgumentException("Found "
+            + qualifiers[idx].length + " qualifiers and "
+            + values[idx].length + " values for family "
+            + families[idx] + " at index " + idx + ". Should be equal.");
+      }
+      for (int i = 0; i < qualifiers[idx].length; i++) {
+        KeyValue.checkQualifier(qualifiers[idx][i]);
+        KeyValue.checkValue(values[idx][i]);
+      }
+    }
   }
 
   @Override
@@ -401,7 +429,7 @@ public final class AppendRequest extends BatchableRpc
    */
   @Override
   public byte[] qualifier() {
-    return qualifiers[0];
+    return qualifiers[0][0];
   }
 
   /**
@@ -409,6 +437,15 @@ public final class AppendRequest extends BatchableRpc
    */
   @Override
   public byte[][] qualifiers() {
+    return qualifiers[0];
+  }
+
+  /**
+   * {@inheritDoc}
+   * @since 1.5
+   */
+  @Override
+  public byte[][][] getQualifiers() {
     return qualifiers;
   }
 
@@ -418,7 +455,7 @@ public final class AppendRequest extends BatchableRpc
    */
   @Override
   public byte[] value() {
-    return values[0];
+    return values[0][0];
   }
 
   /**
@@ -426,12 +463,21 @@ public final class AppendRequest extends BatchableRpc
    */
   @Override
   public byte[][] values() {
+    return values[0];
+  }
+
+  /**
+   * {@inheritDoc}
+   * @since 1.5
+   */
+  @Override
+  public byte[][][] getValues() {
     return values;
   }
-  
+
   public String toString() {
     return super.toStringWithQualifiers("AppendRequest",
-                                       family, qualifiers, values,
+                                       families, qualifiers, values,
                                        ", timestamp=" + timestamp
                                        + ", lockid=" + lockid
                                        + ", durable=" + durable
@@ -473,24 +519,33 @@ public final class AppendRequest extends BatchableRpc
 
   @Override
   int numKeyValues() {
-    return qualifiers.length;
+    return qualifiers[0].length;
   }
 
   @Override
   int payloadSize() {
+    return payloadSize(0);
+  }
+
+  int payloadSize(int idx) {
     int size = 0;
-    for (int i = 0; i < qualifiers.length; i++) {
-      size += KeyValue.predictSerializedSize(key, family, qualifiers[i], values[i]);
+    for (int i = 0; i < qualifiers[idx].length; i++) {
+      size += KeyValue.predictSerializedSize(
+            key, families[idx], qualifiers[idx][i], values[idx][i]);
     }
     return size;
   }
 
   @Override
   void serializePayload(final ChannelBuffer buf) {
-    for (int i = 0; i < qualifiers.length; i++) {
+    serializePayload(buf, 0);
+  }
+
+  private void serializePayload(final ChannelBuffer buf, int idx) {
+    for (int i = 0; i < qualifiers[idx].length; i++) {
       //HBASE KeyValue (org.apache.hadoop.hbase.KeyValue) doesn't have an Append Type
-      KeyValue.serialize(buf, KeyValue.PUT, timestamp, key, family,
-                         qualifiers[i], values[i]);
+      KeyValue.serialize(buf, KeyValue.PUT, timestamp, key, families[idx],
+                         qualifiers[idx][i], values[idx][i]);
     }
   }
 
@@ -531,41 +586,53 @@ public final class AppendRequest extends BatchableRpc
     size += 1;  // bool: Whether or not to write to the WAL.
     size += 4;  // int:  Number of families for which we have edits.
 
-    size += 1;  // vint: Family length (guaranteed on 1 byte).
-    size += family.length;  // The family.
-    size += 4;  // int:  Number of KeyValues that follow.
-    size += 4;  // int:  Total number of bytes for all those KeyValues.
-
-    size += payloadSize();
+    size += payloadsSize();
 
     return size;
   }
 
   @Override
-  MutationProto toMutationProto() {
-    final MutationProto.ColumnValue.Builder columns =  // All columns ...
-      MutationProto.ColumnValue.newBuilder()
-      .setFamily(Bytes.wrap(family));                  // ... for this family.
-
-    // Now add all the qualifier-value pairs.
-    for (int i = 0; i < qualifiers.length; i++) {
-      final MutationProto.ColumnValue.QualifierValue column =
-        MutationProto.ColumnValue.QualifierValue.newBuilder()
-        .setQualifier(Bytes.wrap(qualifiers[i]))
-        .setValue(Bytes.wrap(values[i]))
-        .setTimestamp(timestamp)
-        .build();
-      columns.addQualifierValue(column);
+  int payloadsSize() {
+    int size = 0;
+    for (int i = 0; i < families.length; i++) {
+      size += 1;  // vint: Family length (guaranteed on 1 byte).
+      size += families[i].length;  // The family.
+      size += 4;  // int:  Number of KeyValues that follow.
+      size += 4;  // int:  Total number of bytes for all those KeyValues.
+      size += payloadSize(i);
     }
+    return size;
+  }
 
+
+  @Override
+  MutationProto toMutationProto() {
     final MutationProto.Builder append = MutationProto.newBuilder()
       .setRow(Bytes.wrap(key))
-      .setMutateType(MutationProto.MutationType.APPEND)
-      .addColumnValue(columns);
+      .setMutateType(MutationProto.MutationType.APPEND);
     if (!durable) {
       append.setDurability(MutationProto.Durability.SKIP_WAL);
     }
-    
+ 
+    final MutationProto.ColumnValue.Builder columns =  // All columns ...
+      MutationProto.ColumnValue.newBuilder();
+    for (int family_idx = 0; family_idx < families.length; family_idx++) {
+      columns.clear();
+      columns.setFamily(Bytes.wrap(families[family_idx])); // ... for this family.
+
+      // Now add all the qualifier-value pairs.
+      for (int i = 0; i < qualifiers[family_idx].length; i++) {
+        final MutationProto.ColumnValue.QualifierValue column =
+          MutationProto.ColumnValue.QualifierValue.newBuilder()
+          .setQualifier(Bytes.wrap(qualifiers[family_idx][i]))
+          .setValue(Bytes.wrap(values[family_idx][i]))
+          .setTimestamp(timestamp)
+          .build();
+        columns.addQualifierValue(column);
+      }
+      append.addColumnValue(columns);
+    }
+
     //Set return results flag
     HBasePB.NameBytesPair nameBytePair = HBasePB.NameBytesPair.getDefaultInstance();
     append.addAttribute(nameBytePair.toBuilder().
@@ -617,17 +684,24 @@ public final class AppendRequest extends BatchableRpc
     buf.writeLong(lockid);    // Lock ID.
     buf.writeByte(durable ? 0x01 : 0x00);  // Whether or not to use the WAL.
 
-    buf.writeInt(1);  // Number of families that follow.
-    writeByteArray(buf, family);  // The column family.
+    buf.writeInt(families.length);  // Number of families that follow.
+    serializePayloads(buf);
 
-    buf.writeInt(qualifiers.length);  // Number of "KeyValues" that follow.
-    buf.writeInt(payloadSize());  // Size of the KV that follows.
-    serializePayload(buf);
     buf.writeInt(1);    // Set one attribute
     buf.writeInt(4);    // Set attribute name length
     buf.writeBytes(RETURN_RESULTS);
     buf.writeByte(1);
     buf.writeByte(this.return_result ? 1:0);
+  }
+
+  @Override
+  void serializePayloads(ChannelBuffer buf) {
+    for (int i = 0; i < families.length; i++) {
+      writeByteArray(buf, families[i]);  // The column family.
+      buf.writeInt(qualifiers[i].length);  // Number of "KeyValues" that follow.
+      buf.writeInt(payloadSize(i));  // Size of the KV that follows.
+      serializePayload(buf, i);
+    }
   }
 
   @Override
