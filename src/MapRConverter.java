@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 
 import org.slf4j.Logger;
@@ -22,6 +23,7 @@ import com.mapr.fs.jni.MapRScan;
 public class MapRConverter {
 
   private static final Logger LOG = LoggerFactory.getLogger(MapRConverter.class);
+  private static final byte[] ZERO_BYTE_ARRAY = new byte[0];
 
   // copied from hbase
   public static int compareTo(byte[] buffer1, int offset1, int length1,
@@ -100,7 +102,8 @@ public class MapRConverter {
       mrget.key = get.key();
       mrget.result = new MapRResult();
       // set constraints
-      mrget.rowConstraint = toRowConstraint(mtable, family, get.qualifiers());
+      mrget.rowConstraint = toRowConstraint(mtable, family, get.qualifiers(),
+					    get.maxVersions());
       return mrget;
     } catch (IOException ioe) {
       throw new IllegalArgumentException("Invalid column family " + family, ioe);
@@ -110,7 +113,8 @@ public class MapRConverter {
   // Build rowconstraint for async get
   public static MapRRowConstraint toRowConstraint( MapRHTable htable,
                                                    String family,
-                                                   byte[][] qualifier)
+                                                   byte[][] qualifier,
+						   int maxVers)
   throws IOException {
 
     MapRRowConstraint rc = new MapRRowConstraint();
@@ -150,7 +154,7 @@ public class MapRConverter {
         rc.columnsPerFamily[0] = 0;
     }
 
-    rc.maxVersions = RowConstants.DEFAULT_MAX_VERSIONS;
+    rc.maxVersions = maxVers;
     rc.minStamp = RowConstants.DEFAULT_MIN_STAMP;
     rc.maxStamp = RowConstants.DEFAULT_MAX_STAMP;
     return rc;
@@ -169,6 +173,7 @@ public class MapRConverter {
     String cfname;
     ArrayList<KeyValue> cells = new ArrayList<KeyValue> (mresult.getColumnOffsets().length);
     ByteBuffer bbuf = mresult.getByteBuf();
+    int columnPos = 0;
     int cellPos = 0;
 
     for (int f = 0; f < mresult.getCfids().length; ++f) {
@@ -188,30 +193,45 @@ public class MapRConverter {
         continue;
       }
 
-      byte []fname = cfname.getBytes();
+      byte[] fname = cfname.getBytes();
 
       for (int i = 0; i < mresult.getCellsPerFamily()[f]; ++i) {
-        int length = mresult.getColumnLengths()[cellPos];
-        byte [] qual = null;
-        if (length != 0) {
-          qual = new byte[length];
-          bbuf.position(mresult.getColumnOffsets()[cellPos]);
-          bbuf.get(qual, 0, length);
+	int qualLen = mresult.getColumnLengths()[columnPos];
+	byte[] qual = ZERO_BYTE_ARRAY;;
+	if (qualLen != 0) {
+	  qual = new byte[qualLen];
+	  bbuf.position(mresult.getColumnOffsets()[columnPos]);
+	  bbuf.get(qual, 0, qualLen);
         }
 
-        length = mresult.getValueLengths()[cellPos];
-        byte [] val = new byte[length];
-        bbuf.position(mresult.getValueOffsets()[cellPos]);
-        bbuf.get(val, 0, length);
+	for (int v = 0; v < mresult.versions()[columnPos]; ++v) {
+	   int valueLen = mresult.getValueLengths()[cellPos];
+	   byte[] val = new byte[valueLen];
+	   bbuf.position(mresult.getValueOffsets()[cellPos]);
+	   bbuf.get(val, 0, valueLen);
 
-        KeyValue kv = new KeyValue(key, fname, qual,
-                                   mresult.getTimeStamps()[cellPos],
-                                   val);
-        cells.add(kv);
-        ++cellPos;
+           KeyValue kv = new KeyValue(key, fname, qual,
+				      mresult.getTimeStamps()[cellPos], val);
+           cells.add(kv);
+           cellPos++;
+         }
+         ++columnPos;
       }
     }
-    return cells;
+
+    /*
+     *  Need to do this since within a MapR result, unlike HBase, KeyValue is
+     *  sorted on column family IDs (a number) instead of column family name.
+     *  This sort is guaranteed to be stable. Equal elements will not be
+     *  reordered as a result of the sort.
+     */
+     Collections.sort(cells, new Comparator<KeyValue>() {
+       @Override
+       public int compare(KeyValue kv1, KeyValue kv2) {
+         return Bytes.memcmp(kv1.family(), kv2.family());
+       }
+     });
+     return cells;
   }
 
   // From async scan -> MapR scan
@@ -227,7 +247,8 @@ public class MapRConverter {
                                              Bytes.toString(scan.getFamily()),
                                              scan.getQualifiers(),
                                              scan.getMinTimestamp(),
-                                             scan.getMaxTimestamp());
+                                             scan.getMaxTimestamp(),
+					     scan.getMaxVersions());
     return maprscan;
   }
 
@@ -239,7 +260,8 @@ public class MapRConverter {
                                                   String family,
                                                   byte[][] qualifiers,
                                                   long minTimeStamp,
-                                                  long maxTimeStamp)
+                                                  long maxTimeStamp,
+						  int maxVers)
        throws IOException {
 
     MapRRowConstraint rc = new MapRRowConstraint();
@@ -280,7 +302,8 @@ public class MapRConverter {
       if (family != null)
         rc.columnsPerFamily[0] = 0;
     }
-    rc.maxVersions = RowConstants.DEFAULT_MAX_VERSIONS;
+
+    rc.maxVersions = maxVers;
     rc.minStamp = minTimeStamp;
     rc.maxStamp = maxTimeStamp;
     return rc;
@@ -298,7 +321,8 @@ public class MapRConverter {
     mincr.rowConstraint = toRowConstraint(mtable, Bytes.toString(family),
                                           new byte[][] {qualifier},
                                           RowConstants.DEFAULT_MIN_STAMP,
-                                          RowConstants.DEFAULT_MAX_STAMP);
+                                          RowConstants.DEFAULT_MAX_STAMP,
+					  RowConstants.DEFAULT_MAX_VERSIONS);
     mincr.deltas = new long[1];
     mincr.deltas[0] = delta;
     return mincr;
