@@ -830,7 +830,7 @@ public final class HBaseClient {
 
     // MapR Tables flush
     for (MapRHTable mTable : MapRHTableCache.values()) {
-       Deferred deferred = new Deferred<Object>();
+       Deferred<Object> deferred = new Deferred<Object>();
        deferred.addErrback(MapRGenericErrback(mTable.getName()));
        mPool.doFlush(deferred, mTable);
        d.add(deferred);
@@ -1313,10 +1313,10 @@ public final class HBaseClient {
       if (mTable == null) {
         throw new TableNotFoundException(table);
       }
-      return new Scanner(this, table, mTable);
+      return new Scanner(this, table, mTable, mPool);
     }
 
-    return new Scanner(this, table);
+    return new Scanner(this, table, mPool);
   }
 
   /**
@@ -1329,10 +1329,10 @@ public final class HBaseClient {
     Path p = mTableMappingRules.getMapRTablePath(table);
     if (p != null) {
       MapRHTable mTable = getMapRTable(p.toString());
-      return new Scanner(this, table.getBytes(), mTable);
+      return new Scanner(this, table.getBytes(), mTable, mPool);
     }
 
-    return new Scanner(this, table.getBytes());
+    return new Scanner(this, table.getBytes(), mPool);
   }
 
   // Not used by MapR tables
@@ -1436,7 +1436,7 @@ public final class HBaseClient {
         return Deferred.fromError(e);
       }
       
-      Deferred d = new Deferred<Object>();
+      Deferred<Object> d = new Deferred<Object>();
       //d.addErrback(MapRGenericErrback(tableStr));
       mPool.closeScanner(d, mTable, scanner);
       return d;
@@ -1773,7 +1773,7 @@ public final class HBaseClient {
         return Deferred.fromError(e);
       }
       CompareAndSetRequest csr = new CompareAndSetRequest(edit, expected);
-      Deferred d = csr.getDeferred();
+      Deferred<Object> d = csr.getDeferred();
       mPool.sendRpc(csr, mTable);
       return d.addCallback(CAS_CB);
     }

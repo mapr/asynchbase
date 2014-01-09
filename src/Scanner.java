@@ -48,6 +48,7 @@ import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
 import com.mapr.fs.proto.Dbfilters.FilterMsg;
 import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
 import com.mapr.fs.proto.Dbfilters.RowFilterProto;
+import com.mapr.fs.jni.MapRScan;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
@@ -205,28 +206,32 @@ public final class Scanner {
   private GetNextRowsRequest get_next_rows_request;
 
   private boolean isMapRTable;
-  private MapRThreadPool.ScanRpcRunnable scanRpcRunnable;
   private FilterMsg filterMsg;
   private Exception filterException;
   public MapRResultScanner mresultScanner;
+  public MapRHTable mTable;
+  public MapRScan mscan;
+  public MapRThreadPool mpool;
 
   /**
    * Constructor.
    * <strong>This byte array will NOT be copied.</strong>
    * @param table The non-empty name of the table to use.
    */
-  Scanner(final HBaseClient client, final byte[] table, MapRHTable mTable) {
+    Scanner(final HBaseClient client, final byte[] table, MapRHTable mTable,
+	    MapRThreadPool mpool) {
     this.isMapRTable = (mTable != null) ? true : false;
     if (!isMapRTable) {
       KeyValue.checkTable(table);
-    } else {
-      scanRpcRunnable = client.getMapRThreadPool().newScanner(mTable, this);
     }
     this.client = client;
     this.table = table;
     this.mresultScanner = null;
     this.filterMsg = null;
     this.filterException = null;
+    this.mTable = mTable;
+    this.mscan = null;
+    this.mpool = mpool;
   }
 
   /**
@@ -234,8 +239,8 @@ public final class Scanner {
    * <strong>This byte array will NOT be copied.</strong>
    * @param table The non-empty name of the table to use.
    */
-  Scanner(final HBaseClient client, final byte[] table) {
-    this(client, table, null);
+  Scanner(final HBaseClient client, final byte[] table, MapRThreadPool mpool) {
+      this(client, table, null, mpool);
   }  
   
   public MapRResultScanner getMapRResultScanner() {
@@ -791,9 +796,10 @@ public final class Scanner {
         return Deferred.fromError(filterException);
       }
       GetNextRowsRequest dummyRpc = new GetNextRowsRequest();
+      @SuppressWarnings("unchecked")
       final Deferred<ArrayList<ArrayList<KeyValue>>> d =
         (Deferred) dummyRpc.getDeferred().addCallbacks(got_next_row, nextRowErrback());
-      scanRpcRunnable.addRequest(dummyRpc);
+      this.mpool.addRequest(dummyRpc, this, mpool);
       return d;
     }
 
@@ -1091,6 +1097,9 @@ public final class Scanner {
       .append(", filter=").append(filter);
     buf.append(", scanner_id=").append(Bytes.hex(scanner_id))
       .append(')');
+    final String mrsStr = ((this.mresultScanner == null) ? "null" :
+			   mresultScanner.toString());
+    buf.append(", mresultScanner=").append(mrsStr);
     return buf.toString();
   }
 
