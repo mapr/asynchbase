@@ -1,6 +1,7 @@
 /* Copyright (c) 2012 & onwards. MapR Tech, Inc., All rights reserved */
 package org.hbase.async;
 
+import java.lang.Thread;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -39,12 +40,13 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
       this.scanner = null;
     }
 
-    public AsyncHBaseRpc(HBaseRpc rpc, MapRHTable mTable, Deferred<?> deferred) {
+    public AsyncHBaseRpc(HBaseRpc rpc, MapRHTable mTable, Deferred<?> deferred){
       this(rpc, mTable);
       this.deferred = deferred;
     }
 
-    public AsyncHBaseRpc(HBaseRpc rpc, MapRHTable mTable, Deferred<?> deferred, Scanner scanner) {
+    public AsyncHBaseRpc(HBaseRpc rpc, MapRHTable mTable, Deferred<?> deferred,
+			 Scanner scanner) {
       this(rpc, mTable, deferred);
       this.scanner = scanner;
     }
@@ -53,19 +55,49 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
   // pool for all rpcs except scanner
   public static final int MIN_THREADS = 5;
   public static final int MAX_THREADS = 10;
+  public static final int MIN_SCAN_THREADS = 3;
+  public static final int MAX_SCAN_THREADS = 32;
   private ExecutorService pool;
   BlockingQueue<AsyncHBaseRpc> asyncrpcQueue;
 
   // Separate pool for scanner
   private ExecutorService scanpool;
+  BlockingQueue<MapRScanPlus> scanRequestQueue;
+
+  // Used by scan
+  static class MapRScanPlus {
+    MapRScan mscan;
+    HBaseRpc dummyRpc;
+    Scanner scan;
+    MapRHTable mtbl;
+
+    MapRScanPlus(MapRScan mscan, HBaseRpc dummyRpc, Scanner scan,
+		 MapRHTable mt) {
+      this.mscan = mscan;
+      this.dummyRpc = dummyRpc;
+      this.scan = scan;
+      this.mtbl = mt;
+    }
+  }
 
   MapRThreadPool() {
     asyncrpcQueue = new LinkedBlockingQueue<AsyncHBaseRpc> ();
 
+    // Taken from Java doc:
+    // A ThreadPoolExecutor will automatically adjust the pool size according
+    // to the bounds set by corePoolSize and maximumPoolSize. When a new task
+    // is submitted in method execute(java.lang.Runnable), and fewer than
+    // corePoolSize threads are running, a new thread is created to handle the
+    // request, even if other worker threads are idle. If there are more than
+    // corePoolSize but less than maximumPoolSize threads running, a new thread
+    // will be created only if the queue is full. By setting maximumPoolSize 
+    // to an essentially unbounded value such as Integer.MAX_VALUE, you
+    // allow the pool to accommodate an arbitrary number of concurrent tasks.
     pool = new ThreadPoolExecutor(
-                  1 + MIN_THREADS, // core thread pool size, should be atleast 1 more than MIN_THREADS
+                  1 + MIN_THREADS, // core thread pool size, 
+		                   // should be atleast 1 more than MIN_THREADS
                   MAX_THREADS, // maximum thread pool size
-                  1, // time to wait before resizing pool
+                  1,// time to wait before reducing threads, if more then coreSz
                   TimeUnit.HOURS,
                   new LinkedBlockingQueue<Runnable>(),
                   new ThreadPoolExecutor.CallerRunsPolicy());
@@ -73,16 +105,45 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
     for (int i = 0; i < MIN_THREADS; i++)
        pool.execute(new RpcRunnable());
 
-    // Separate threadpool for Scanner, with unlimited threads
-    // This threadpool will run when scan is invoked. No need to execute it now
+    // Separate threadpool for Scanner.
     scanpool = new ThreadPoolExecutor(
-                  0, // core thread pool size
-                  Integer.MAX_VALUE, // maximum thread pool size
-                  1, // time to wait before resizing pool
+                  MIN_SCAN_THREADS, // core thread pool size
+                  MAX_SCAN_THREADS, // maximum thread pool size
+                  1,// time to wait before reducing threads, if more then coreSz
                   TimeUnit.HOURS,
                   new LinkedBlockingQueue<Runnable>(),
                   new ThreadPoolExecutor.CallerRunsPolicy());
+    // Start minimum number of threads in pool.
+    for (int i = 0; i < MIN_SCAN_THREADS; i++)
+       scanpool.execute(new ScanRpcRunnable(this));
 
+    // All the threads in the scanpool will work on the scan requests in this
+    // queue. If the max threads are hit, then they block for a thread to get
+    // done and pick them up.
+    this.scanRequestQueue = new LinkedBlockingQueue<MapRScanPlus>();
+  }
+
+  public boolean hasRemainingCapacity() {
+    if (scanRequestQueue.remainingCapacity() != 0)
+	return true;
+
+    return false;
+  }
+
+  public void addToQ(MapRScanPlus mscanPlus) {
+    scanRequestQueue.add(mscanPlus);
+  }
+
+  public MapRScanPlus takeFromQ() {
+    MapRScanPlus msp;
+
+    try {
+	msp = scanRequestQueue.take();
+    } catch (InterruptedException e) {
+	msp = null;
+    }
+
+    return msp;
   }
 
   // Used by most rpcs
@@ -95,13 +156,6 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
   public void doFlush(Deferred<?> deferred, MapRHTable mTable) {
     AsyncHBaseRpc asrpc = new AsyncHBaseRpc(null, mTable, deferred);
     asyncrpcQueue.add(asrpc);
-  }
-
-  // Used for scan()
-  public ScanRpcRunnable newScanner(MapRHTable mtable, Scanner scan) {
-    ScanRpcRunnable sc = new ScanRpcRunnable(mtable, scan);
-    scanpool.execute(sc);
-    return sc;
   }
 
   public void closeScanner(Deferred<?> d, MapRHTable mTable, Scanner scan) {
@@ -145,9 +199,8 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
         HBaseRpc rpc = asrpc.rpc;
         MapRHTable mTable = asrpc.mTable;
         Scanner sc = asrpc.scanner;
-
         if (sc != null) {
-          sc.mresultScanner.close();
+	  sc.mresultScanner.close();
           asrpc.deferred.callback(null);
         }
         else if (rpc == null) {
@@ -307,52 +360,41 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
     }
   }
 
-  // Used by scan
-  static class MapRScanPlus {
-    MapRScan mscan;
-    HBaseRpc dummyRpc;
-
-    MapRScanPlus(MapRScan mscan, HBaseRpc dummyRpc) {
-      this.mscan = mscan;
-      this.dummyRpc = dummyRpc;
-    }
-  }
-
-  static class ScanRpcRunnable implements Runnable {
-    MapRHTable mTable;
-    Scanner scan;
-    BlockingQueue<MapRScanPlus> scanRequestQueue;
-    MapRScan mscan;
-
-    ScanRpcRunnable(MapRHTable mt, Scanner sc) {
-      this.mTable = mt;
-      this.scan = sc;
-      this.scanRequestQueue = new LinkedBlockingQueue<MapRScanPlus>();
-      this.mscan = null;
-    }
-
-    public void addRequest(HBaseRpc dummyRpc) {
+  public void addRequest(HBaseRpc dummyRpc, Scanner scan, MapRThreadPool mpool){
       try {
-        // NOTE: Do this only once
-        if (this.mscan == null) {
-          this.mscan = MapRConverter.toMapRScan(scan, mTable);
-          if (this.scan.getFilterMsg() != null) {
-            mscan.setFilter(this.scan.getFilterMsg().toByteArray());
-          }
-        }
-        this.mscan.startRow = scan.getCurrentKey();
-        this.mscan.stopRow = scan.getStopKey();
-        MapRScanPlus mscanPlus = new MapRScanPlus(mscan, dummyRpc);
-        if (scanRequestQueue.remainingCapacity() != 0) {
-          scanRequestQueue.add(mscanPlus);
+	// NOTE: Do this only once per scan
+        if (scan.mscan == null) {
+	  scan.mscan = MapRConverter.toMapRScan(scan, scan.mTable);
+	  if (scan.getFilterMsg() != null) {
+	    scan.mscan.setFilter(scan.getFilterMsg().toByteArray());
+	  }
+	}
+
+	// These cannot be in the constructor as client can change these
+	// properties after creating object but before issuing scan.
+	scan.mscan.startRow = scan.getCurrentKey();
+	scan.mscan.stopRow = scan.getStopKey();
+
+        MapRScanPlus mscanPlus = new MapRScanPlus(scan.mscan, dummyRpc, scan,
+						  scan.mTable);
+        if (mpool.hasRemainingCapacity()) {
+	    mpool.addToQ(mscanPlus);
         } else {
-          throw new UnknownScannerException("Failed to add scan request to queue", dummyRpc);
+          throw new UnknownScannerException("Failed to add scan request " +
+					    "to queue", dummyRpc);
         }
       } catch (Exception e) {
         LOG.error("Exception in addRequest: " + e.getMessage());
         dummyRpc.callback(e);
         Deferred.fromError(e);
       }
+  }
+
+  static class ScanRpcRunnable implements Runnable {
+    MapRThreadPool mTpool;
+
+    ScanRpcRunnable(MapRThreadPool mtp) {
+      this.mTpool = mtp;
     }
 
     public void run() {
@@ -360,17 +402,25 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
         HBaseRpc dummyRpc = null;
         try {
           // handle connection
-          MapRScanPlus mscanPlus = scanRequestQueue.take();
-          MapRScan mscan = mscanPlus.mscan;
-          dummyRpc = mscanPlus.dummyRpc;
+	  MapRScanPlus mscanPlus = mTpool.takeFromQ();
 
-          // NOTE: Do this only once
-          if (scan.mresultScanner == null) {
-            scan.mresultScanner = new MapRResultScanner(mscan, mTable);
-          }
+	  if (mscanPlus == null) {
+	      break;
+	  }
+
+          MapRScan mscan = mscanPlus.mscan;
+	  Scanner scan = mscanPlus.scan;
+          dummyRpc = mscanPlus.dummyRpc;
+	  MapRHTable mTable = mscanPlus.mtbl;
+
+	  // NOTE: Do this only once per scan
+	  if (scan.mresultScanner == null) {
+	    scan.mresultScanner = new MapRResultScanner(mscan, mTable);
+	  }
 
           // Do the scan
-          MapRResult[] mresults = scan.mresultScanner.nextRows(scan.getMaxNumRows());
+          MapRResult[] mresults =
+	      scan.mresultScanner.nextRows(scan.getMaxNumRows());
 
           // Convert to Arraylist of Keyvalue
           int num_rows = 0;
@@ -385,7 +435,9 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
 
           if (num_rows == 0) {
             scan.mresultScanner.releaseTempMemory();
-            dummyRpc.callback(null);
+            if (dummyRpc != null) {
+		dummyRpc.callback(null);
+	    }
             return;
           }
 
@@ -405,14 +457,13 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
 
           // Callback
           dummyRpc.callback(rows);
-        } catch (InterruptedException e) {
-          break;
         } catch (Exception e) {
-          LOG.error("Exception in scanner thread: " + e.getMessage());
           if (dummyRpc != null) {
+	    LOG.error("Exception in scanner thread: " + e.getMessage() + 
+		      "thrd=" + Thread.currentThread().getId());
             dummyRpc.callback(e);
+	    Deferred.fromError(e);
           }
-          Deferred.fromError(e);
         }
       }
     }
