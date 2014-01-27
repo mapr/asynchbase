@@ -466,6 +466,6 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <skipTests>true</skipTests>
     <skipSigning>true</skipSigning>
-    <mapr.release.version>1.0.3-mapr-3.0.2</mapr.release.version>
+    <mapr.release.version>1.0.3-mapr-3.1.0</mapr.release.version>
   </properties>
 </project>
