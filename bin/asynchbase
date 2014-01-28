@@ -55,6 +55,7 @@ function get_canonical_dir() {
 }
 bin_dir=$(get_canonical_dir "$0")
 ASYNCHBASE_HOME=`cd "$bin_dir/..">/dev/null; pwd`
+MAPR_HOME=${MAPR_HOME:-/opt/mapr}
 
 cygwin=false
 case "`uname`" in
@@ -102,15 +103,17 @@ function find_jars() {
   echo "${ALL_JARS#:}"
 }
 
-JAVA_PLATFORM=""
-
-#Add MapRFS jar and its dependencies
+# Add MapRFS jar and its dependencies
 HADOOP_IN_PATH=$(PATH="${HADOOP_HOME:-${HADOOP_PREFIX}}/bin:$PATH" which hadoop 2>/dev/null)
 if [ -f ${HADOOP_IN_PATH} ]; then
   hadoop_bin_dir=$(get_canonical_dir "$HADOOP_IN_PATH")
   HADOOP_HOME=`cd "$hadoop_bin_dir/..">/dev/null; pwd`
   JAVA_CLASSPATH=${JAVA_CLASSPATH}:$(find_jars $HADOOP_HOME/lib \
-    "maprfs*.jar" "hadoop*.jar" "commons-logging*.jar" "protobuf*.jar" "libprotodefs*.jar")
+    "hadoop*.jar" "commons-logging*.jar" "protobuf*.jar")
+  if [ -d ${MAPR_HOME}/lib ]; then
+    JAVA_CLASSPATH=${JAVA_CLASSPATH}:$(find_jars $MAPR_HOME/lib \
+      "maprfs*.jar" "json*.jar" "libprotodefs*.jar")  
+  fi
 fi
 
 # Add user-specified CLASSPATH last
