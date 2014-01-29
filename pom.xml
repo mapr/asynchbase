@@ -9,7 +9,7 @@
   </parent>
   <groupId>org.hbase</groupId>
   <artifactId>asynchbase</artifactId>
-  <version>1.4.1-mapr-1401-SNAPSHOT</version>
+  <version>1.4.1-mapr-1401</version>
   <name>Asynchronous HBase Client</name>
   <organization>
     <name>The Async HBase Authors</name>
