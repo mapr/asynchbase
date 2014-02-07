@@ -33,7 +33,6 @@ import org.slf4j.Logger;
 import com.mapr.fs.ClusterConf.ClusterEntry;
 import com.mapr.fs.MapRFileSystem;
 import com.mapr.fs.proto.Dbserver.ColumnFamilyAttr;
-import com.mapr.fs.proto.Dbserver.SchemaFamily;
 
 public class TestM7Client {
   private static final Logger LOG = Common.logger(TestM7Client.class);
@@ -81,10 +80,7 @@ public class TestM7Client {
       maprfs.delete(TABLE_PATH);
     }
     maprfs.createTable(TABLE_PATH);
-    maprfs.createColumnFamily(TABLE_PATH, FAMILY_NAME_S, ColumnFamilyAttr.newBuilder()
-                                                         .setSchFamily(SchemaFamily
-                                                                       .newBuilder().build())
-                                                         .build());
+    maprfs.createColumnFamily(TABLE_PATH, FAMILY_NAME_S, ColumnFamilyAttr.newBuilder().build());
     initialized = true;
   }
 
