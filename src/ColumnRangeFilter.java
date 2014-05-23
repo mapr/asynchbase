@@ -30,6 +30,11 @@ import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+
+import com.mapr.fs.proto.Dbfilters.ColumnRangeFilterProto;
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
+
 /**
  * Filters based on a range of column qualifiers.
  * <p>
@@ -158,4 +163,25 @@ public final class ColumnRangeFilter extends ScanFilter {
       + (stop_inclusive ? " (in" : " (ex") + "clusive))";
   }
 
+  // MapR addition
+  private static final int kColumnRangeFilter               = 0x1aad36f1;
+
+  public FilterMsg getFilterMsg() throws Exception {
+    ColumnRangeFilterProto.Builder crfp = ColumnRangeFilterProto.newBuilder();
+    if (start_column != null) {
+      crfp.setMinColumn(ByteString.copyFrom(start_column));
+      crfp.setMinColumnInclusive(start_inclusive);
+    }
+
+    if (stop_column != null) {
+      crfp.setMaxColumn(ByteString.copyFrom(stop_column));
+      crfp.setMaxColumnInclusive(stop_inclusive);
+    }
+
+    ByteString state = crfp.build().toByteString();
+    return FilterMsg.newBuilder()
+            .setId(getFilterId(kColumnRangeFilter))
+            .setSerializedState(state)
+            .build();
+  }
 }

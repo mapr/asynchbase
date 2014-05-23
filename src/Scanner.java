@@ -39,15 +39,9 @@ import org.jboss.netty.util.CharsetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.protobuf.ByteString;
 import com.mapr.fs.MapRHTable;
 import com.mapr.fs.MapRResultScanner;
-import com.mapr.fs.proto.Dbfilters.ComparatorProto;
-import com.mapr.fs.proto.Dbfilters.CompareOpProto;
-import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
 import com.mapr.fs.proto.Dbfilters.FilterMsg;
-import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
-import com.mapr.fs.proto.Dbfilters.RowFilterProto;
 import com.mapr.fs.jni.MapRScan;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
@@ -372,6 +366,7 @@ public final class Scanner {
   public void setFamilies(final String... families) {
     checkScanningNotStarted();
     this.families = new byte[families.length][];
+    this.qualifiers = new byte[families.length][][];
     for (int i = 0; i < families.length; i++) {
       this.families[i] = families[i].getBytes();
       KeyValue.checkFamily(this.families[i]);
@@ -424,6 +419,19 @@ public final class Scanner {
    */
   public void setFilter(final ScanFilter filter) {
     this.filter = filter;
+    if (isMapRTable) {
+      if (filter != null) {
+        try {
+          filterMsg = filter.getFilterMsg();
+          filterException = null;
+        } catch (Exception e) {
+          filterException = e;
+        }
+      } else {
+        filterMsg = null;
+        filterException = null;
+      }
+    }
   }
 
   /**
@@ -441,7 +449,7 @@ public final class Scanner {
    * @since 1.5
    */
   public void clearFilter() {
-    filter = null;
+    setFilter(null);
   }
 
   /**
@@ -456,13 +464,6 @@ public final class Scanner {
     setKeyRegexp(regexp, CharsetUtil.ISO_8859_1);
   }
 
-  private static final int kRegexStringComparator           = 0xe2d7ba40;
-  private static final int kRowFilter                       = 0x469dbd04;
-  
-  private static String getFilterId(int hashCode) {
-    return String.format("%08x", hashCode);
-  }
-  
   /**
    * Sets a regular expression to filter results based on the row key.
    * <p>
@@ -476,35 +477,7 @@ public final class Scanner {
    * scanner.
    */
   public void setKeyRegexp(final String regexp, final Charset charset) {
-    if (isMapRTable) {
-      try {
-        RegexStringComparatorProto rcp = 
-            RegexStringComparatorProto.newBuilder()
-            .setPattern(ByteString.copyFrom(regexp.getBytes(charset)))
-            .setIsUTF8(charset.equals(CharsetUtil.UTF_8))
-            .build();
-        ComparatorProto cp = ComparatorProto.newBuilder()
-            .setName(getFilterId(kRegexStringComparator))
-            .setSerializedComparator(rcp.toByteString())
-            .build();
-        FilterComparatorProto.Builder fcp = FilterComparatorProto.newBuilder()
-            .setCompareOp(CompareOpProto.EQUAL)
-            .setComparator(cp);
-        ByteString state = RowFilterProto.newBuilder()
-            .setFilterComparator(fcp)
-            .build()
-            .toByteString();
-        filterMsg = FilterMsg.newBuilder()
-            .setId(getFilterId(kRowFilter))
-            .setSerializedState(state)
-            .build();
-      } catch (Exception e) {
-        filterException = e;
-      }
-    }
-    else {
-      filter = new KeyRegexpFilter(regexp, charset);
-    }
+    setFilter(new KeyRegexpFilter(regexp, charset));
   }
 
   /**
