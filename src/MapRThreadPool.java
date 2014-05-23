@@ -440,7 +440,7 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             if (dummyRpc != null) {
 		dummyRpc.callback(null);
 	    }
-            return;
+            continue;
           }
 
           final ArrayList<ArrayList<KeyValue>> rows =
