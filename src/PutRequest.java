@@ -643,6 +643,10 @@ public final class PutRequest extends BatchableRpc
     return values;
   }
 
+  public long[][] getTimestamps() {
+    return timestamps;
+  }
+
   public String toString() {
     return super.toStringWithQualifiers("PutRequest",
                                        families, qualifiers, values, timestamps,

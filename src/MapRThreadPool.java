@@ -287,26 +287,20 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
               }
             }
 
-            byte[][] qualifiers = new byte [1][];
-            qualifiers[0] = crpc.qualifier();
-            byte[][] values = new byte [1][];
-            MapRPut mput;
             boolean res = false;
-
             if (crpc.value() == null) {
               // Special case: treat as delete
-
-              values[0] = new byte [0];
-              mput =  new MapRPut(crpc.key(), id, qualifiers, values,
-                                  KeyValue.TIMESTAMP_NOW,
-                                  PutConstants.TYPE_DELETE_CELLS_ASYNC);
+              MapRPut mput =  new MapRPut(crpc.key(), id, new byte[][] { crpc.qualifier() }, 
+                                          null, crpc.timestamp(),
+                                          PutConstants.TYPE_DELETE_CELLS_ASYNC);
               res = mTable.checkAndDelete(crpc.key(), useCf, id,
                                           crpc.qualifier(), crpc.expectedValue(),
                                           mput);
             } else {
-              values[0] = crpc.value();
-              mput =  new MapRPut(crpc.key(), id, qualifiers, values,
-                                  KeyValue.TIMESTAMP_NOW);
+              MapRPut mput =  new MapRPut(crpc.key(), id, new byte[][] { crpc.qualifier() }, 
+                                          new byte[][] { crpc.value() }, 
+                                          crpc.timestamp(), 
+                                          PutConstants.TYPE_PUT_ROW_ASYNC);
               res = mTable.checkAndPut(crpc.key(), useCf, id,
                                        crpc.qualifier(), crpc.expectedValue(),
                                        mput);
@@ -321,34 +315,8 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
           }
         } else if (rpc instanceof DeleteRequest) {
           try {
-            int id = 0;
-            // get family id
-
             DeleteRequest drpc = (DeleteRequest)rpc;
-            if (drpc.family() != null) {
-              String family = Bytes.toString(drpc.family());
-              if (!family.isEmpty()) {
-                try {
-                  id = mTable.getFamilyId(family);
-                } catch (IOException ioe) {
-                  throw new IllegalArgumentException("Invalid column family " +
-                                                     family, ioe);
-                }
-              }
-            }
-
-            byte[][] values = new byte [1][]; // Just a dummy
-            values[0] = new byte [0];
-            byte type = (drpc.getFamilies() == DeleteRequest.WHOLE_ROW) ?
-                PutConstants.TYPE_DELETE_ROW_ASYNC : PutConstants.TYPE_DELETE_CELLS_ASYNC;
-            MapRPut mput;
-            if (type == PutConstants.TYPE_DELETE_CELLS_ASYNC) {
-              mput =  new MapRPut(drpc.key(), id, drpc.qualifiers(), values,
-                                  drpc.timestamp(), type);
-            } else {
-              mput =  new MapRPut(drpc.key(), id, values, values,
-                                  drpc.timestamp(), type);
-            }
+            MapRPut mput = MapRConverter.toMapRPut(drpc, mTable);
             mTable.delete(mput);
             drpc.callback(null);
           } catch (Exception e) {
@@ -440,7 +408,7 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             if (dummyRpc != null) {
 		dummyRpc.callback(null);
 	    }
-            return;
+            continue;
           }
 
           final ArrayList<ArrayList<KeyValue>> rows =

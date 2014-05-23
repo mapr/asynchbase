@@ -27,6 +27,7 @@
 package org.hbase.async;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
 
 /**
  * Abstract base class for {@link org.hbase.async.Scanner} filters.
@@ -82,4 +83,10 @@ public abstract class ScanFilter {
    */
   abstract int predictSerializedSize();
 
+  // MapR addition
+  abstract FilterMsg getFilterMsg() throws Exception;
+
+  protected static String getFilterId(int hashCode) {
+    return String.format("%08x", hashCode);
+  }
 }

@@ -3,6 +3,7 @@ package org.hbase.async;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.lang.Integer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -12,7 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.mapr.fs.MapRHTable;
+import com.mapr.fs.jni.MapRCallBackQueue;
 import com.mapr.fs.jni.MapRConstants.RowConstants;
+import com.mapr.fs.jni.MapRConstants.PutConstants;
 import com.mapr.fs.jni.MapRGet;
 import com.mapr.fs.jni.MapRIncrement;
 import com.mapr.fs.jni.MapRPut;
@@ -48,52 +51,98 @@ public class MapRConverter {
   }
 
   public static MapRPut toMapRPut(PutRequest put, MapRHTable mtable,
-                                  String family, MapRThreadPool cbq) {
-    int id = 0;
-    int ncells = put.qualifiers().length;
-    // get family id
-    try {
-      id = mtable.getFamilyId(family);
-    } catch (IOException ioe) {
-      throw new IllegalArgumentException("Invalid column family " +
-                                         family, ioe);
+                                  MapRThreadPool cbq) {
+    byte[][] families     = put.getFamilies();
+    byte[][][] qualifiers = put.getQualifiers();
+    byte[][][] values     = put.getValues();
+
+    int[] familyIds = new int[families.length];
+    int nCells = 0;
+    for (int i = 0; i < families.length; ++i) {
+      String family = Bytes.toString(families[i]);
+
+      try {
+        familyIds[i] = mtable.getFamilyId(family);
+      } catch (IOException ioe) {
+        throw new IllegalArgumentException("Invalid column family " +
+                                           family, ioe);
+      }
+
+      nCells += qualifiers[i].length;
     }
-    if (ncells > 1) {
-      // sort by qualifiers
-      Integer []cells = new Integer[ncells];
-      for (int i = 0 ; i< ncells; ++i) {
-        cells[i] = i;
-      }
 
-      final byte [][]quals = put.qualifiers();
-      final byte [][]vals = put.values();
-      /* Pure java comparator from hbase */
-      Comparator<Integer> cmp = new Comparator<Integer>(){
-        public int compare(Integer i, Integer j) {
-          return compareTo(quals[i], 0, quals[i].length,
-              quals[j], 0, quals[j].length);
+    byte[][][] sortedQuals = new byte[nCells][][];
+    byte[][][] sortedVals  = new byte[nCells][][];
+
+    if (nCells > 1) {
+      for (int i = 0; i < families.length; ++i) {
+        // sort by qualifiers
+        int cellsPerFamily = qualifiers[i].length;
+        Integer []cells = new Integer[cellsPerFamily];
+        for (int j = 0 ; j < cellsPerFamily; ++j) {
+          cells[j] = j;
         }
-      };
+        sortedQuals[i] = new byte[cellsPerFamily][];
+        sortedVals[i]  = new byte[cellsPerFamily][];
 
-      Arrays.sort(cells, cmp);
+        final byte [][]quals = qualifiers[i];
+        final byte [][]vals  = values[i];
 
-      byte[][] sortedQuals = new byte[ncells][];
-      byte[][] sortedVals = new byte[ncells][];
+        /* Pure java comparator from hbase */
+        Comparator<Integer> cmp = new Comparator<Integer>(){
+          public int compare(Integer i, Integer j) {
+            return compareTo(quals[i], 0, quals[i].length,
+                quals[j], 0, quals[j].length);
+          }
+        };
 
-      for (int i = 0; i < ncells; ++i) {
-        int off = cells[i].intValue();
-        sortedQuals[i] = quals[off];
-        sortedVals[i] = vals[off];
+        Arrays.sort(cells, cmp);
+
+        for (int j = 0; j < cellsPerFamily; ++j) {
+          int off = cells[j].intValue();
+          sortedQuals[i][j] = quals[off];
+          sortedVals[i][j]  = vals[off];
+        }
       }
-      return new MapRPut(put.key(), id,
-          sortedQuals, sortedVals, put.timestamp(),
-          /* original request = */ put, /* callback on = */ cbq);
+
+      return new MapRPut(put.key(), familyIds,
+          sortedQuals, sortedVals, put.timestamp(), put.getTimestamps(),
+          /* original request = */ (Object)put, /* callback on = */ (MapRCallBackQueue)cbq);
     } else {
-      return new MapRPut(put.key(), id,
-          put.qualifiers(), put.values(), put.timestamp(),
-          /* original request = */ put, /* callback on = */ cbq);
+      return new MapRPut(put.key(), familyIds,
+          put.getQualifiers(), put.getValues(), put.timestamp(), put.getTimestamps(),
+          /* original request = */ (Object)put, /* callback on = */ (MapRCallBackQueue)cbq);
     }
   }
+
+  public static MapRPut toMapRPut(DeleteRequest drpc, MapRHTable mTable) {
+    MapRPut mput;
+    if (drpc.getFamilies() != DeleteRequest.WHOLE_ROW) {
+      byte[][] families = drpc.getFamilies();
+      int[] familyIds = new int[families.length];
+      for (int i = 0; i < families.length; i ++) {
+        String family = Bytes.toString(families[i]);
+        try {
+          familyIds[i] = mTable.getFamilyId(family);
+        } catch (IOException ioe) {
+          throw new IllegalArgumentException("Invalid column family " +
+                                             family, ioe);
+        }
+      }
+
+      mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
+                          /*values*/null, drpc.timestamp(), /*timestamps*/null,
+                          PutConstants.TYPE_DELETE_CELLS_ASYNC);
+
+    } else {
+      mput =  new MapRPut(drpc.key(), /*familyIds*/null, /*qualifiers*/null, 
+                          /*values*/null, drpc.timestamp(), /*timestamps*/null,
+                          PutConstants.TYPE_DELETE_ROW_ASYNC);
+    }
+
+    return mput;
+  }
+
 
   public static MapRGet toMapRGet(GetRequest get, MapRHTable mtable) {
     try {
@@ -289,9 +338,11 @@ public class MapRConverter {
 
       if (qualifiers != null) {
         rc.columns = new byte[rc.numColumns][];
+        int k = 0;
         for (int i = 0; i < qualifiers.length; i ++) {
           for (int j = 0; (qualifiers[i] != null) && (j < qualifiers[i].length); j ++) {
-            rc.columns[i] = qualifiers[i][j];
+            rc.columns[k] = qualifiers[i][j];
+            k ++;
           }
         }
       } else {
