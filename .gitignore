@@ -1,4 +1,9 @@
 build/
-pom.xml
 target/
 /bin/
+mapr-build/
+.mvn/
+.project
+.classpath
+.settings
+*.patch
