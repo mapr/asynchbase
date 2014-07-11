@@ -58,7 +58,7 @@ public final class RowLockRequest extends HBaseRpc
    * @param key The key of the row to lock in that table.
    */
   public RowLockRequest(final byte[] table, final byte[] key) {
-    super(LOCK_ROW, table, key);
+    super(table, key);
   }
 
   /**
@@ -140,8 +140,7 @@ public final class RowLockRequest extends HBaseRpc
      * @param region The region corresponding to {@code lock.region()}.
      */
     ReleaseRequest(final RowLock lock, final RegionInfo region) {
-      super(LOCK_ROW,
-            region.table(),
+      super(region.table(),
             // This isn't actually the key we locked, but it doesn't matter
             // as this information is useless for this RPC, we simply supply
             // a key to the parent constructor to make it happy.

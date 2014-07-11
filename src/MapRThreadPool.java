@@ -161,26 +161,20 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
           }
         } else if (rpc instanceof GetRequest) {
           try {
-            System.out.println("SPANC: GetRequest");
             GetRequest grpc = (GetRequest)rpc;
-            System.out.println("SPANC: > to MapRGet");
             MapRGet mGet = MapRConverter.toMapRGet(grpc, mTable);
-            System.out.println("SPANC: mGet");
             MapRResult result = mTable.get(mGet);
-            System.out.println("SPANC: .get()");
 
             ArrayList<KeyValue> kvArr =
                MapRConverter.toAsyncHBaseResult(result, grpc.key(), mTable);
             grpc.callback(kvArr);
           } catch (IllegalArgumentException ie) {
-            System.out.println("SPANC: IllegalArgument");
 
             LOG.error("Exception in async get(): " + ie.getMessage());
             final Exception e = new NoSuchColumnFamilyException("Invalid column family", rpc);
             rpc.callback(e);
             Deferred.fromError(e);
           } catch (Exception e) {
-            System.out.println("SPANC: Exception");
 
             LOG.error("Exception in async get(): " + e.getMessage());
             rpc.callback(e);

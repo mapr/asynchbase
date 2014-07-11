@@ -1268,7 +1268,7 @@ public final class Scanner {
   private final class OpenScannerRequest extends HBaseRpc {
 
     public OpenScannerRequest() {
-      super(OPEN_SCANNER, Scanner.this.table, start_key);
+      super(Scanner.this.table, start_key);
     }
 
     @Override

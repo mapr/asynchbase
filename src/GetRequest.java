@@ -73,7 +73,7 @@ public final class GetRequest extends HBaseRpc
    * @param key The row key to get in that table.
    */
   public GetRequest(final byte[] table, final byte[] key) {
-    super(GET, table, key);
+    super(table, key);
   }
 
   /**
@@ -106,7 +106,7 @@ public final class GetRequest extends HBaseRpc
   public GetRequest(final byte[] table,
                     final byte[] key,
                     final byte[] family) {
-    super(GET, table, key);
+    super(table, key);
     this.family(family);
   }
 
@@ -137,7 +137,7 @@ public final class GetRequest extends HBaseRpc
                     final byte[] key,
                     final byte[] family,
                     final byte[] qualifier) {
-    super(GET, table, key);
+    super(table, key);
     this.family(family);
     this.qualifier(qualifier);
   }
@@ -155,7 +155,7 @@ public final class GetRequest extends HBaseRpc
                     final byte[] key,
                     final byte[][] families,
                     final byte[][][] qualifiers) {
-    super(GET, table, key);
+    super(table, key);
     this.families(families);
     this.qualifiers(qualifiers);
   }
@@ -186,7 +186,7 @@ public final class GetRequest extends HBaseRpc
   private GetRequest(final float unused,
                      final byte[] table,
                      final byte[] key) {
-    super(GET, table, key);
+    super(table, key);
     this.versions |= EXIST_FLAG;
   }
 

@@ -77,11 +77,11 @@ abstract class BatchableRpc extends HBaseRpc
    * @param timestamp The timestamp to use for {@link KeyValue}s of this RPC.
    * @param lockid Explicit row lock to use, or {@link RowLock#NO_LOCK}.
    */
-  BatchableRpc(final byte[] method, final byte[] table,
+  BatchableRpc(final byte[] table,
                final byte[] key, final byte[][] families,
                final long timestamp, final long lockid) {
     // Set a method name here
-    super(method, table, key);
+    super(table, key);
     this.families = families;
     this.timestamp = timestamp;
     this.lockid = lockid;

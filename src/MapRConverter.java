@@ -251,7 +251,6 @@ public class MapRConverter {
        throws IOException {
 
     MapRRowConstraint rc = new MapRRowConstraint();
-    System.out.println("SPANC: tRC, families: " + families + ", qualifiers: " + qualifiers);
     //create columns and families array
     if (families != null) {
       rc.numFamilies = families.length;

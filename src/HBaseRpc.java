@@ -405,7 +405,6 @@ public abstract class HBaseRpc {
    */
   final byte[] key;  // package-private for subclasses, not other classes.
 
-  final byte[] method; 
   /**
    * The region for which this RPC is.
    * {@code null} if this RPC isn't for a single specific region.
@@ -460,7 +459,6 @@ public abstract class HBaseRpc {
    * Package private constructor for RPCs that aren't for any region.
    */
   HBaseRpc() {
-    method = null;
     table = null;
     key = null;
   }
@@ -470,13 +468,12 @@ public abstract class HBaseRpc {
    * @param table The name of the table this RPC is for.
    * @param row The name of the row this RPC is for.
    */
-  HBaseRpc(final byte[] method, final byte[] table, final byte[] key) {
+  HBaseRpc(final byte[] table, final byte[] key) {
     if (!tableMappingRules.isMapRTable(Bytes.toString(table))) {
       // TODO: MapR
       KeyValue.checkTable(table);
       KeyValue.checkKey(key);
     }
-    this.method = method;
     this.table = table;
     this.key = key;
   }

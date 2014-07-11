@@ -73,7 +73,7 @@ public final class AtomicIncrementRequest extends HBaseRpc
                                 final byte[] family,
                                 final byte[] qualifier,
                                 final long amount) {
-    super(INCREMENT_COLUMN_VALUE, table, key);
+    super(table, key);
     KeyValue.checkFamily(family);
     KeyValue.checkQualifier(qualifier);
     this.family = family;

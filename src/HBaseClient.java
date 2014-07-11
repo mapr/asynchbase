@@ -990,21 +990,17 @@ public final class HBaseClient {
       dummy = GetRequest.exists(table, ZERO_ARRAY, family);
     }
 
-    System.out.println("SPANC: ensureTFE");
     String tableStr = Bytes.toString(table);
     Path p = mTableMappingRules.getMapRTablePath(tableStr);
     if (p != null) {
-      System.out.println("SPANC: p = " + p);
       tableStr = p.toString();
       final Deferred<Object> d = dummy.getDeferred();
       MapRHTable mTable = getMapRTable(tableStr);
       if (mTable == null) {
-        System.out.println("SPANC: mtable = NULL");
         final Exception e = new TableNotFoundException(table);
         dummy.callback(e);
         return Deferred.fromError(e);
       }
-      System.out.println("SPANC: mTable != NULL");
       mPool.sendRpc(dummy, mTable);
       return d;
     }

@@ -634,7 +634,7 @@ final class RegionClient extends ReplayingDecoder<VoidEnum> {
                                                       final byte[] family) {
     final class GetClosestRowBefore extends HBaseRpc {
       GetClosestRowBefore() {
-        super(GET_CLOSEST_ROW_BEFORE, tabl, row);
+        super(tabl, row);
       }
 
       @Override
