@@ -273,17 +273,22 @@ public class MapRConverter {
 
         rc.numColumns += rc.columnsPerFamily[i];
       }
-    }
 
-    if (qualifiers != null) {
-      rc.columns = new byte[rc.numColumns][];
-      for (int i = 0; i < qualifiers.length; i ++) {
-        for (int j = 0; (qualifiers[i] != null) && (j < qualifiers[i].length); j ++) {
-          rc.columns[i] = qualifiers[i][j];
+      if (qualifiers != null) {
+        rc.columns = new byte[rc.numColumns][];
+        for (int i = 0; i < qualifiers.length; i ++) {
+          for (int j = 0; (qualifiers[i] != null) && (j < qualifiers[i].length); j ++) {
+            rc.columns[i] = qualifiers[i][j];
+          }
         }
+      } else {
+        rc.columns = null;
       }
     } else {
-      rc.columns = null;
+      rc.numFamilies = 0;
+      rc.families = null;
+      rc.columnsPerFamily = null;
+      rc.numColumns = 0;
     }
 
     rc.maxVersions = RowConstants.DEFAULT_MAX_VERSIONS;
