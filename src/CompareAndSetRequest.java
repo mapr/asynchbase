@@ -113,6 +113,10 @@ final class CompareAndSetRequest extends HBaseRpc
     return put.qualifier();
   }
 
+  public long timestamp() {
+    return put.timestamp();
+  }
+
   /**
    * Returns the expected value.
    * <p>
