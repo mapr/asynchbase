@@ -30,10 +30,19 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.util.CharsetUtil;
 
 import java.nio.charset.Charset;
+import java.util.Arrays;
 
 import org.hbase.async.generated.ComparatorPB;
 import org.hbase.async.generated.FilterPB;
 import org.hbase.async.generated.HBasePB;
+
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.CompareOpProto;
+import com.mapr.fs.proto.Dbfilters.ComparatorProto;
+import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
+import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
+import com.mapr.fs.proto.Dbfilters.RowFilterProto;
 
 /**
  * Filters rows based on an expression applied to the row key.
@@ -65,8 +74,12 @@ public final class KeyRegexpFilter extends ScanFilter {
     + ".hbase.filter.RegexStringComparator");
   private static final byte[] EQUAL = new byte[] { 'E', 'Q', 'U', 'A', 'L' };
 
-  private final byte[] regexp;
-  private final byte[] charset;
+  private final byte[]  regexp;
+  private final byte[]  bCharset;
+
+  // MapR addition
+  // Save the charset in which the regexp is encoded
+  private final Charset charset;
 
   /**
    * Sets a regular expression to filter results based on the row key.
@@ -89,7 +102,7 @@ public final class KeyRegexpFilter extends ScanFilter {
    * @see #KeyRegexpFilter(byte[], Charset)
    */
   public KeyRegexpFilter(final String regexp, final Charset charset) {
-    this(Bytes.UTF8(regexp), charset);
+    this(regexp.getBytes(charset), charset);
   }
 
   /**
@@ -114,7 +127,8 @@ public final class KeyRegexpFilter extends ScanFilter {
    */
   public KeyRegexpFilter(final byte[] regexp, final Charset charset) {
     this.regexp = regexp;
-    this.charset = Bytes.UTF8(charset.name());
+    this.charset = charset;
+    this.bCharset = Bytes.UTF8(charset.name());
   }
 
   @Override
@@ -125,7 +139,7 @@ public final class KeyRegexpFilter extends ScanFilter {
     final byte[] regex_cmp = ComparatorPB.RegexStringComparator.newBuilder()
       .setPatternBytes(Bytes.wrap(regexp))
       .setPatternFlags(0)
-      .setCharsetBytes(Bytes.wrap(charset))
+      .setCharsetBytes(Bytes.wrap(bCharset))
       .build()
       .toByteArray();
     comparator.setSerializedComparator(Bytes.wrap(regex_cmp));
@@ -160,19 +174,47 @@ public final class KeyRegexpFilter extends ScanFilter {
     buf.writeShort(regexp.length);                              // 2
     buf.writeBytes(regexp);                                     // regexp.length
     // writeUTF the charset
-    buf.writeShort(charset.length);                             // 2
-    buf.writeBytes(charset);                                    // charset.length
+    buf.writeShort(bCharset.length);                             // 2
+    buf.writeBytes(bCharset);                                    // charset.length
   }
 
   @Override
   int predictSerializedSize() {
     return 1 + 40 + 2 + 5 + 1 + 1 + 1 + 52
-        + 2 + regexp.length + 2 + charset.length;
+        + 2 + regexp.length + 2 + bCharset.length;
   }
 
   public String toString() {
     return "KeyRegexpFilter(\"" + new String(regexp, CharsetUtil.UTF_8)
-      + "\", " + new String(charset, CharsetUtil.UTF_8) + ')';
+      + "\", " + charset.name() + ')';
   }
 
+  // MapR addition
+  private static final int kRegexStringComparator           = 0xe2d7ba40;
+  private static final int kRowFilter                       = 0x469dbd04;
+
+  @Override
+  FilterMsg getFilterMsg() throws Exception {
+    String regexMsg = new String(regexp, charset);
+    RegexStringComparatorProto rcp = 
+            RegexStringComparatorProto.newBuilder()
+            .setPattern(ByteString.copyFrom(regexMsg.getBytes("UTF-8")))
+            .setIsUTF8(true)
+            .build();
+    ComparatorProto cp = ComparatorProto.newBuilder()
+            .setName(getFilterId(kRegexStringComparator))
+            .setSerializedComparator(rcp.toByteString())
+            .build();
+    FilterComparatorProto.Builder fcp = FilterComparatorProto.newBuilder()
+            .setCompareOp(CompareOpProto.EQUAL)
+            .setComparator(cp);
+    ByteString state = RowFilterProto.newBuilder()
+            .setFilterComparator(fcp)
+            .build()
+            .toByteString();
+    return FilterMsg.newBuilder()
+            .setId(getFilterId(kRowFilter))
+            .setSerializedState(state)
+            .build();
+  }
 }
