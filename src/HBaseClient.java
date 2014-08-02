@@ -1488,7 +1488,7 @@ public final class HBaseClient {
       MapRPut mPut = MapRConverter.toMapRPut(request, mTable,
                                              mPool);
       try {
-        if (flushOnPut) {
+        if (flushOnPut || !request.bufferable) {
           mTable.syncPut(mPut, false);
         } else {
           mTable.put(mPut);
