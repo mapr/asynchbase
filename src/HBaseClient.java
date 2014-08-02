@@ -1433,7 +1433,7 @@ public final class HBaseClient {
                                              Bytes.toString(request.family()),
                                              mPool);
       try {
-        if (flushOnPut) {
+        if (flushOnPut || !request.bufferable) {
           mTable.syncPut(mPut, false);
         } else {
           mTable.put(mPut);
