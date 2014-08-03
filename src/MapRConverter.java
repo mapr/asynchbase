@@ -338,9 +338,11 @@ public class MapRConverter {
 
       if (qualifiers != null) {
         rc.columns = new byte[rc.numColumns][];
+        int k = 0;
         for (int i = 0; i < qualifiers.length; i ++) {
           for (int j = 0; (qualifiers[i] != null) && (j < qualifiers[i].length); j ++) {
-            rc.columns[i + j] = qualifiers[i][j];
+            rc.columns[k] = qualifiers[i][j];
+            k ++;
           }
         }
       } else {
