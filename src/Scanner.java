@@ -366,6 +366,7 @@ public final class Scanner {
   public void setFamilies(final String... families) {
     checkScanningNotStarted();
     this.families = new byte[families.length][];
+    this.qualifiers = new byte[families.length][][];
     for (int i = 0; i < families.length; i++) {
       this.families[i] = families[i].getBytes();
       KeyValue.checkFamily(this.families[i]);
