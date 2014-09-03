@@ -7,7 +7,7 @@
 
   <groupId>org.hbase</groupId>
   <artifactId>asynchbase</artifactId>
-  <version>1.5.0-mapr-1408-SNAPSHOT</version>
+  <version>1.5.0-mapr-1408</version>
   <name>Asynchronous HBase Client</name>
   <organization>
     <name>The Async HBase Authors</name>
