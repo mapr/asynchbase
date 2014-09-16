@@ -426,6 +426,10 @@
               <artifactId>jsch</artifactId>
               <groupId>com.jcraft</groupId>
             </exclusion>
+            <exclusion>
+              <artifactId>maprfs</artifactId>
+              <groupId>com.mapr.hadoop</groupId>
+            </exclusion>
           </exclusions>
         </dependency>
       </dependencies>
