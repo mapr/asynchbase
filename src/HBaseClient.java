@@ -549,7 +549,7 @@ public final class HBaseClient {
 
     // For MapR
     conf = new Configuration();
-    mPool = new MapRThreadPool();
+    mPool = new MapRThreadPool(conf);
     mTableMappingRules = new MapRTableMappingRules(conf);
     flushOnPut = conf.getBoolean(CONFIG_PARAM_FLUSH_ON_PUT, false);
   }
