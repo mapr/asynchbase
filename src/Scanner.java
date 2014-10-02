@@ -385,7 +385,26 @@ public final class Scanner {
   private static String getFilterId(int hashCode) {
     return String.format("%08x", hashCode);
   }
-  
+
+  private String handleNullByteInFilter(final String regexp, final Charset charset) {
+    if ((charset == null) || (charset.compareTo(CharsetUtil.ISO_8859_1) == 0)) {
+      byte []reg = regexp.getBytes(charset);
+      StringBuilder buf = new StringBuilder();
+      for (final byte b : reg) {
+        // embedded NULL byte terminates the PCRE pattern
+        // So replace it with the octal equivalent
+        if (b == 0) {
+          buf.append("\\E\\000\\Q");
+        } else {
+          buf.append((char)(b & 0xFF));
+        }
+      }
+
+      return buf.toString();
+    }
+
+    return regexp;
+  }
   /**
    * Sets a regular expression to filter results based on the row key.
    * <p>
@@ -408,10 +427,11 @@ public final class Scanner {
    */
   public void setKeyRegexp(final String regexp, final Charset charset) {
     if (isMapRTable) {
+      String regex = handleNullByteInFilter(regexp, charset);
       try {
         RegexStringComparatorProto rcp = 
             RegexStringComparatorProto.newBuilder()
-            .setPattern(ByteString.copyFrom(regexp.getBytes(charset)))
+            .setPattern(ByteString.copyFrom(regex.getBytes(charset)))
             .setIsUTF8(charset.equals(CharsetUtil.UTF_8))
             .build();
         ComparatorProto cp = ComparatorProto.newBuilder()
