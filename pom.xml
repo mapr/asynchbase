@@ -330,7 +330,7 @@
         <property><name>!hadoop.profile</name></property>
       </activation>
       <properties>
-        <hadoop2.version>${mapr.release.version}</hadoop2.version>
+        <hadoop2.version>2.4.1-mapr-1408</hadoop2.version>
       </properties>
       <dependencies>
         <dependency>
@@ -615,7 +615,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <skipTests>true</skipTests>
     <skipSigning>true</skipSigning>
-    <mapr.release.version>2.4.1-mapr-4.0.0-SNAPSHOT</mapr.release.version>
+    <mapr.release.version>4.0.1-mapr</mapr.release.version>
     <async.sourceDir>.mvn-compat/src/main/java</async.sourceDir>
     <async.testDir>.mvn-compat/src/test/java</async.testDir>
   </properties>
