@@ -109,6 +109,7 @@ if [ -f ${HADOOP_IN_PATH} ]; then
   hadoop_bin_dir=$(get_canonical_dir "$HADOOP_IN_PATH")
   HADOOP_HOME=`cd "$hadoop_bin_dir/..">/dev/null; pwd`
   JAVA_CLASSPATH=${JAVA_CLASSPATH}:$(find_jars $HADOOP_HOME/lib \
+    "commons-collections*.jar" "commons-lang*.jar" \
     "hadoop*.jar" "commons-logging*.jar" "protobuf*.jar")
   if [ -d ${MAPR_HOME}/lib ]; then
     JAVA_CLASSPATH=${JAVA_CLASSPATH}:$(find_jars $MAPR_HOME/lib \
