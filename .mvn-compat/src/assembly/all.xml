@@ -12,6 +12,11 @@
       <directoryMode>0755</directoryMode>
     </fileSet>
     <fileSet>
+      <directory>conf</directory>
+      <fileMode>0644</fileMode>
+      <directoryMode>0755</directoryMode>
+    </fileSet>
+    <fileSet>
       <directory>${project.basedir}</directory>
       <outputDirectory>/</outputDirectory>
       <includes>
@@ -48,6 +53,8 @@
         <include>io.netty:netty</include>
         <include>org.slf4j:slf4j-api</include>
         <include>org.slf4j:log4j-over-slf4j</include>
+        <include>ch.qos.logback:logback-classic</include>
+        <include>ch.qos.logback:logback-core</include>
         <include>org.apache.zookeeper:zookeeper</include>
       </includes>
       </dependencySet>
