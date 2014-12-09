@@ -620,6 +620,13 @@
     <async.testDir>.mvn-compat/src/test/java</async.testDir>
   </properties>
 
+  <repositories>
+    <repository>
+      <id>mapr-maven-releases</id>
+      <url>http://repository.mapr.com/maven/</url>
+    </repository>
+  </repositories>
+
   <pluginRepositories>
     <pluginRepository>
       <id>protoc-plugin</id>
