@@ -28,7 +28,6 @@ package org.hbase.async;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.util.CharsetUtil;
-
 import java.nio.charset.Charset;
 import java.util.Arrays;
 
@@ -193,32 +192,28 @@ public final class KeyRegexpFilter extends ScanFilter {
   private static final int kRegexStringComparator           = 0xe2d7ba40;
   private static final int kRowFilter                       = 0x469dbd04;
 
-  String handleNullByteInFilter(final byte[] regex, Charset cset) {
-    if ((cset == null) || (cset.compareTo(CharsetUtil.ISO_8859_1) == 0)) {
-      StringBuilder buf = new StringBuilder();
-      for (final byte b : regex) {
-        // embedded NULL byte terminates the PCRE pattern
-        // So replace it with the octal equivalent
-        if (b == 0) {
-          buf.append("\\E\\000\\Q");
-        } else {
-          buf.append((char)(b & 0xFF));
-        }
-      }
-
-      return buf.toString();
+  private byte[] getPatternBytes() {
+    if (!charset.equals(CharsetUtil.ISO_8859_1)) {
+      return regexp;
     }
 
-    return new String(regex, cset);
+    StringBuilder buf = new StringBuilder();
+    for (final byte b : regexp) {
+      if (b == 0) {                 // A NULL byte terminates the PCRE pattern
+        buf.append("\\E\\000\\Q");  // So replace it with the octal equivalent
+      } else {
+        buf.append((char)(b & 0xFF));
+      }
+    }
+    return buf.toString().getBytes(charset);
   }
 
   @Override
   FilterMsg getFilterMsg() throws Exception {
-    String regexMsg = handleNullByteInFilter(regexp, charset);
     RegexStringComparatorProto rcp = 
             RegexStringComparatorProto.newBuilder()
-            .setPattern(ByteString.copyFrom(regexMsg.getBytes("UTF-8")))
-            .setIsUTF8(true)
+            .setPattern(ByteString.copyFrom(getPatternBytes()))
+            .setIsUTF8(charset.equals(CharsetUtil.UTF_8))
             .build();
     ComparatorProto cp = ComparatorProto.newBuilder()
             .setName(getFilterId(kRegexStringComparator))
