@@ -27,6 +27,8 @@
 package org.hbase.async;
 
 import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.SubstringComparatorProto;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.ComparatorPB;
@@ -94,4 +96,20 @@ public final class SubstringComparator extends FilterComparator {
   public String toString() {
     return String.format("%s(%s)", getClass().getSimpleName(), substr);
   }
+
+  // MapR addition
+  public static final int kSubstringComparator             = 0x0f960e99;
+
+  @Override
+  protected ByteString getState() {
+    return SubstringComparatorProto.newBuilder()
+        .setSubstr(substring())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getName() {
+    return ScanFilter.getFilterId(kSubstringComparator);
+  }
+
 }

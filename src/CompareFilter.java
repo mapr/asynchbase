@@ -32,6 +32,9 @@ import org.hbase.async.generated.ComparatorPB;
 import org.hbase.async.generated.FilterPB;
 import org.hbase.async.generated.HBasePB;
 
+import com.mapr.fs.proto.Dbfilters.CompareOpProto;
+import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
+
 /**
  * A generic scan filter to be used to filter by comparison. It takes an
  * operator (equal, greater, not equal, etc) and a filter comparator.
@@ -114,4 +117,15 @@ public abstract class CompareFilter extends ScanFilter {
         compare_op.name(),
         comparator.toString());
   }
+
+  // MapR addition
+  protected final FilterComparatorProto toFilterComparatorProto() {
+    FilterComparatorProto.Builder builder = FilterComparatorProto.newBuilder();
+    builder.setCompareOp(CompareOpProto.valueOf(compare_op.name()));
+    if (comparator != null) {
+      builder.setComparator(comparator.toComparatorProto());
+    }
+    return builder.build();
+  }
+
 }

@@ -37,7 +37,6 @@ import org.hbase.async.generated.FilterPB;
 import com.google.protobuf.ByteString;
 
 import com.mapr.fs.proto.Dbfilters.FilterListProto;
-import com.mapr.fs.proto.Dbfilters.FilterMsg;
 
 /**
  * Combines a list of filters into one.
@@ -149,20 +148,21 @@ public final class FilterList extends ScanFilter {
   private static final int kFilterList                      = 0xa42ebf64;
 
   @Override
-  FilterMsg getFilterMsg() throws Exception {
+  protected ByteString getState() {
     FilterListProto.Builder builder = FilterListProto.newBuilder();
-    FilterListProto.OperatorProto oproto = 
-        (op == Operator.MUST_PASS_ALL) ? 
-                                FilterListProto.OperatorProto.MUST_PASS_ALL : 
-                                FilterListProto.OperatorProto.MUST_PASS_ONE;
+    FilterListProto.OperatorProto oproto = (op == Operator.MUST_PASS_ALL)
+        ? FilterListProto.OperatorProto.MUST_PASS_ALL
+        : FilterListProto.OperatorProto.MUST_PASS_ONE;
     builder.setOperator(oproto);
     for (ScanFilter filter : filters) {
       builder.addFilters(filter.getFilterMsg());
     }
-    ByteString state = builder.build().toByteString();
-    return FilterMsg.newBuilder()
-            .setId(getFilterId(kFilterList))
-            .setSerializedState(state)
-            .build();
+    return builder.build().toByteString();
   }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kFilterList);
+  }
+
 }

@@ -28,6 +28,9 @@ package org.hbase.async;
 
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.ValueFilterProto;
+
 /**
  * Filter key values based on their value. Takes an operator (equal, greater,
  * not equal, etc). and a filter comparator.
@@ -57,4 +60,20 @@ public final class ValueFilter extends CompareFilter {
         .build()
         .toByteArray();
   }
+
+  // MapR addition
+  public static final int kValueFilter                     = 0xac0ecadb;
+
+  @Override
+  protected ByteString getState() {
+    return ValueFilterProto.newBuilder()
+        .setFilterComparator(toFilterComparatorProto())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kValueFilter);
+  }
+
 }

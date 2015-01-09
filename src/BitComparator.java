@@ -30,6 +30,7 @@ import com.google.protobuf.ByteString;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.ComparatorPB;
+import com.mapr.fs.proto.Dbfilters.BitComparatorProto;
 
 /**
  * A bitwise comparator used in comparison filters. Performs the specified
@@ -117,4 +118,21 @@ public final class BitComparator extends FilterComparator {
         getClass().getSimpleName(),
         Bytes.pretty(value));
   }
+
+  // MapR addition
+  public static final int kBitComparator                   = 0x6d0837d5;
+
+  @Override
+  protected ByteString getState() {
+    return BitComparatorProto.newBuilder()
+        .setComparable(ByteString.copyFrom(value))
+        .setBitwiseOp(BitComparatorProto.BitwiseOpProto.valueOf(bit_operator.name()))
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getName() {
+    return ScanFilter.getFilterId(kBitComparator);
+  }
+
 }

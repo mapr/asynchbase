@@ -27,6 +27,10 @@
 package org.hbase.async;
 
 import com.google.common.collect.Lists;
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.TimestampsFilterProto;
+import com.mapr.fs.proto.Dbfilters.TimestampsFilterProto.Builder;
+
 import org.hbase.async.generated.FilterPB;
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -95,4 +99,23 @@ public final class TimestampsFilter extends ScanFilter {
   int predictSerializedSize() {
     return 1 + 47 + 4 + timestamps.size() * 8;
   }
+
+  // MapR addition
+  public static final int kTimestampsFilter                = 0xf97998a3;
+
+  @Override
+  protected ByteString getState() {
+    Builder builder = TimestampsFilterProto.newBuilder();
+    for (Long timestamp : timestamps) {
+      builder.addTimestamps(timestamp);
+    }
+
+    return builder.build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kTimestampsFilter);
+  }
+
 }

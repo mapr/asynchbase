@@ -28,6 +28,9 @@ package org.hbase.async;
 
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.RowFilterProto;
+
 /**
  * Filter rows based on the rowkey. Takes an operator (equal, greater,
  * not equal, etc). and a filter comparator.
@@ -57,4 +60,20 @@ public final class RowFilter extends CompareFilter {
         .build()
         .toByteArray();
   }
+
+  // MapR addition
+  public static final int kRowFilter                       = 0x469dbd04;
+
+  @Override
+  protected ByteString getState() {
+    return RowFilterProto.newBuilder()
+        .setFilterComparator(toFilterComparatorProto())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kRowFilter);
+  }
+
 }

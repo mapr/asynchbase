@@ -28,6 +28,9 @@ package org.hbase.async;
 
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.FamilyFilterProto;
+
 /**
  * Filter columns based on the column family. Takes an operator (equal, greater,
  * not equal, etc). and a filter comparator.
@@ -56,6 +59,21 @@ public final class FamilyFilter extends CompareFilter {
         .setCompareFilter(toProtobuf())
         .build()
         .toByteArray();
+  }
+
+  // MapR addition
+  public static final int kFamilyFilter                    = 0x80e32faa;
+
+  @Override
+  protected ByteString getState() {
+    return FamilyFilterProto.newBuilder()
+        .setFilterComparator(toFilterComparatorProto())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kFamilyFilter);
   }
 
 }

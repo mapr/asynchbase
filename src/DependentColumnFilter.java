@@ -31,6 +31,10 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.hbase.async.generated.ComparatorPB;
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.DependentColumnFilterProto;
+import com.mapr.fs.proto.Dbfilters.NullComparatorProto;
+
 /**
  * Filters key values based on the existence of a dependent, or reference,
  * column. Column values in a row will be filtered unless the row contains a
@@ -211,5 +215,39 @@ public final class DependentColumnFilter extends CompareFilter {
     public String toString() {
       return getClass().getSimpleName();
     }
+
+    // MapR addition
+    public static final int kNullComparator                  = 0x8543f5eb;
+
+    @Override
+    protected ByteString getState() {
+      return NullComparatorProto.newBuilder()
+          .build().toByteString();
+    }
+
+    @Override
+    protected String getName() {
+      return ScanFilter.getFilterId(kNullComparator);
+    }
+
   };
+
+  // MapR addition
+  public static final int kDependentColumnFilter           = 0x1327171f;
+
+  @Override
+  public ByteString getState() {
+    return DependentColumnFilterProto.newBuilder()
+        .setColumnFamily(ByteString.copyFrom(family))
+        .setColumnQualifier(ByteString.copyFrom(qualifier))
+        .setDropDependentColumn(drop_dependent_column)
+        .setFilterComparator(toFilterComparatorProto())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kDependentColumnFilter);
+  }
+
 }

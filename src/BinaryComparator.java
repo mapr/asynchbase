@@ -27,6 +27,9 @@
 package org.hbase.async;
 
 import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.BinaryComparatorProto;
+import com.mapr.fs.proto.Dbfilters.ComparatorProto;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.ComparatorPB;
@@ -92,4 +95,20 @@ public final class BinaryComparator extends FilterComparator {
         getClass().getSimpleName(),
         Bytes.pretty(value));
   }
+
+  // MapR addition
+  public static final int kBinaryComparator                = 0x05f39865;
+
+  @Override
+  protected ByteString getState() {
+    return BinaryComparatorProto.newBuilder()
+        .setComparable(ByteString.copyFrom(value))
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getName() {
+    return ScanFilter.getFilterId(kBinaryComparator);
+  }
+
 }
