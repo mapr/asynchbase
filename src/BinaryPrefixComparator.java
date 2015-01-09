@@ -27,6 +27,8 @@
 package org.hbase.async;
 
 import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.BinaryPrefixComparatorProto;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.ComparatorPB;
@@ -92,4 +94,20 @@ public final class BinaryPrefixComparator extends FilterComparator {
         getClass().getSimpleName(),
         Bytes.pretty(value));
   }
+
+  // MapR addition
+  public static final int kBinaryPrefixComparator          = 0xdf087157;
+
+  @Override
+  protected ByteString getState() {
+    return BinaryPrefixComparatorProto.newBuilder()
+        .setComparable(ByteString.copyFrom(value))
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getName() {
+    return ScanFilter.getFilterId(kBinaryPrefixComparator);
+  }
+
 }

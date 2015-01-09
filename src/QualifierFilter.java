@@ -28,6 +28,9 @@ package org.hbase.async;
 
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters.QualifierFilterProto;
+
 /**
  * Filter columns based on the qualifier. Takes an operator (equal, greater,
  * not equal, etc). and a filter comparator.
@@ -57,4 +60,20 @@ public final class QualifierFilter extends CompareFilter {
         .build()
         .toByteArray();
   }
+
+  // MapR addition
+  public static final int kQualifierFilter                 = 0xe56c8254;
+
+  @Override
+  protected ByteString getState() {
+    return QualifierFilterProto.newBuilder()
+        .setFilterComparator(toFilterComparatorProto())
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kQualifierFilter);
+  }
+
 }

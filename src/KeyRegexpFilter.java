@@ -39,7 +39,6 @@ import com.google.protobuf.ByteString;
 import com.mapr.fs.proto.Dbfilters.CompareOpProto;
 import com.mapr.fs.proto.Dbfilters.ComparatorProto;
 import com.mapr.fs.proto.Dbfilters.FilterComparatorProto;
-import com.mapr.fs.proto.Dbfilters.FilterMsg;
 import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
 import com.mapr.fs.proto.Dbfilters.RowFilterProto;
 
@@ -209,7 +208,7 @@ public final class KeyRegexpFilter extends ScanFilter {
   }
 
   @Override
-  FilterMsg getFilterMsg() throws Exception {
+  protected ByteString getState() {
     RegexStringComparatorProto rcp = 
             RegexStringComparatorProto.newBuilder()
             .setPattern(ByteString.copyFrom(getPatternBytes()))
@@ -222,13 +221,15 @@ public final class KeyRegexpFilter extends ScanFilter {
     FilterComparatorProto.Builder fcp = FilterComparatorProto.newBuilder()
             .setCompareOp(CompareOpProto.EQUAL)
             .setComparator(cp);
-    ByteString state = RowFilterProto.newBuilder()
+    return RowFilterProto.newBuilder()
             .setFilterComparator(fcp)
             .build()
             .toByteString();
-    return FilterMsg.newBuilder()
-            .setId(getFilterId(kRowFilter))
-            .setSerializedState(state)
-            .build();
   }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kRowFilter);
+  }
+
 }

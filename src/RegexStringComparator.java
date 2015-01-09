@@ -32,8 +32,10 @@ import java.util.regex.Pattern;
 import com.google.common.base.Charsets;
 import com.google.protobuf.ByteString;
 import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.util.CharsetUtil;
 
 import org.hbase.async.generated.ComparatorPB;
+import com.mapr.fs.proto.Dbfilters.RegexStringComparatorProto;
 
 /**
  * A regular expression comparator used in comparison filters such as RowFilter,
@@ -143,4 +145,22 @@ public final class RegexStringComparator extends FilterComparator {
         expr,
         charset.name());
   }
+
+  // MapR addition
+  public static final int kRegexStringComparator           = 0xe2d7ba40;
+
+  @Override
+  protected ByteString getState() {
+    return RegexStringComparatorProto.newBuilder()
+        .setPattern(ByteString.copyFrom(expr.getBytes(charset)))
+        .setPatternFlags(Pattern.DOTALL)
+        .setIsUTF8(charset == CharsetUtil.UTF_8)
+        .build().toByteString();
+  }
+
+  @Override
+  protected String getName() {
+    return ScanFilter.getFilterId(kRegexStringComparator);
+  }
+
 }

@@ -33,7 +33,6 @@ import org.hbase.async.generated.FilterPB;
 import com.google.protobuf.ByteString;
 
 import com.mapr.fs.proto.Dbfilters.ColumnPrefixFilterProto;
-import com.mapr.fs.proto.Dbfilters.FilterMsg;
 
 /**
  * Sets a binary prefix to filter results based on the column qualifier.
@@ -103,13 +102,15 @@ public final class ColumnPrefixFilter extends ScanFilter {
   private static final int kColumnPrefixFilter              = 0x9c81c84e;
 
   @Override
-  FilterMsg getFilterMsg() throws Exception {
-    ByteString state = ColumnPrefixFilterProto.newBuilder()
+  protected ByteString getState() {
+    return ColumnPrefixFilterProto.newBuilder()
           .setPrefix(ByteString.copyFrom(this.prefix))
           .build().toByteString();
-    return FilterMsg.newBuilder()
-            .setId(getFilterId(kColumnPrefixFilter))
-            .setSerializedState(state)
-            .build();
   }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kColumnPrefixFilter);
+  }
+
 }

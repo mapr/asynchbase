@@ -27,6 +27,8 @@
 package org.hbase.async;
 
 import org.jboss.netty.buffer.ChannelBuffer;
+
+import com.google.protobuf.ByteString;
 import com.mapr.fs.proto.Dbfilters.FilterMsg;
 
 /**
@@ -84,9 +86,19 @@ public abstract class ScanFilter {
   abstract int predictSerializedSize();
 
   // MapR addition
-  abstract FilterMsg getFilterMsg() throws Exception;
-
-  protected static String getFilterId(int hashCode) {
+  public static String getFilterId(int hashCode) {
     return String.format("%08x", hashCode);
   }
+
+  final FilterMsg getFilterMsg() {
+    return FilterMsg.newBuilder()
+        .setId(getId())
+        .setSerializedState(getState())
+        .build();
+  }
+
+  protected abstract ByteString getState();
+
+  protected abstract String getId();
+
 }

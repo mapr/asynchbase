@@ -27,6 +27,8 @@
 package org.hbase.async;
 
 import com.google.protobuf.ByteString;
+import com.mapr.fs.proto.Dbfilters;
+
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import org.hbase.async.generated.ComparatorPB;
@@ -100,4 +102,17 @@ public abstract class FilterComparator {
   int predictSerializedSize() {
     return 1;
   }
+
+  // MapR addition
+  protected final Dbfilters.ComparatorProto toComparatorProto() {
+    return Dbfilters.ComparatorProto.newBuilder()
+        .setName(getName())
+        .setSerializedComparator(getState())
+        .build();
+  }
+
+  protected abstract ByteString getState();
+
+  protected abstract String getName();
+
 }
