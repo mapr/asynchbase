@@ -223,7 +223,7 @@ public class MapRConverter {
 
     String cfname;
     ArrayList<KeyValue> cells = new ArrayList<KeyValue> (mresult.getColumnOffsets().length);
-    ByteBuffer bbuf = mresult.getByteBuf();
+    ByteBuffer bbuf = ByteBuffer.wrap(mresult.bufBytes);
     int columnPos = 0;
     int cellPos = 0;
 
