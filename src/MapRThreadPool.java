@@ -423,8 +423,7 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
           for (int i = 0 ;i < num_rows; ++i) {
             int keyLen = mresults[i].getKeyLength();
             byte [] key = new byte[keyLen];
-            mresults[i].getByteBuf().position(0);
-            mresults[i].getByteBuf().get(key, 0, keyLen);
+            System.arraycopy(mresults[i].bufBytes, 0, key, 0, mresults[i].getKeyLength());
             ArrayList<KeyValue> kv =
                 MapRConverter.toAsyncHBaseResult(mresults[i], key, mTable);
             rows.add(kv);
