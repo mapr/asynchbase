@@ -615,7 +615,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <skipTests>true</skipTests>
     <skipSigning>true</skipSigning>
-    <mapr.release.version>5.0.0-mapr-SNAPSHOT</mapr.release.version>
+    <mapr.release.version>4.0.1-mapr</mapr.release.version>
     <async.sourceDir>.mvn-compat/src/main/java</async.sourceDir>
     <async.testDir>.mvn-compat/src/test/java</async.testDir>
   </properties>
