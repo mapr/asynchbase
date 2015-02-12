@@ -217,17 +217,14 @@ public final class DependentColumnFilter extends CompareFilter {
     }
 
     // MapR addition
-    public static final int kNullComparator                  = 0x8543f5eb;
-
     @Override
     protected ByteString getState() {
-      return NullComparatorProto.newBuilder()
-          .build().toByteString();
+      return null;
     }
 
     @Override
     protected String getName() {
-      return ScanFilter.getFilterId(kNullComparator);
+      return null;
     }
 
   };
