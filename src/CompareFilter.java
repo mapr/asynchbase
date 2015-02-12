@@ -122,7 +122,7 @@ public abstract class CompareFilter extends ScanFilter {
   protected final FilterComparatorProto toFilterComparatorProto() {
     FilterComparatorProto.Builder builder = FilterComparatorProto.newBuilder();
     builder.setCompareOp(CompareOpProto.valueOf(compare_op.name()));
-    if (comparator != null) {
+    if (comparator != null && comparator.getState() != null) {
       builder.setComparator(comparator.toComparatorProto());
     }
     return builder.build();
