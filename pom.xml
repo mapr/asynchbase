@@ -7,7 +7,7 @@
 
   <groupId>org.hbase</groupId>
   <artifactId>asynchbase</artifactId>
-  <version>1.6.0-mapr-1503-SNAPSHOT</version>
+  <version>1.6.0-mapr-1503</version>
   <name>Asynchronous HBase Client</name>
   <organization>
     <name>The Async HBase Authors</name>
@@ -330,7 +330,7 @@
         <property><name>!hadoop.profile</name></property>
       </activation>
       <properties>
-        <hadoop2.version>2.5.1-mapr-1501-SNAPSHOT</hadoop2.version>
+        <hadoop2.version>2.5.1-mapr-1503</hadoop2.version>
       </properties>
       <dependencies>
         <dependency>
@@ -615,7 +615,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <skipTests>true</skipTests>
     <skipSigning>true</skipSigning>
-    <mapr.release.version>4.1.0-mapr-SNAPSHOT</mapr.release.version>
+    <mapr.release.version>4.1.0-mapr</mapr.release.version>
     <async.sourceDir>.mvn-compat/src/main/java</async.sourceDir>
     <async.testDir>.mvn-compat/src/test/java</async.testDir>
   </properties>
