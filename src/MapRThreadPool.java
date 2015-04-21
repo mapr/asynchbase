@@ -411,7 +411,6 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
           }
 
           if (num_rows == 0) {
-            scan.mresultScanner.releaseTempMemory();
             if (dummyRpc != null) {
               dummyRpc.callback(null);
             }
@@ -428,8 +427,6 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
                 MapRConverter.toAsyncHBaseResult(mresults[i], key, mTable);
             rows.add(kv);
           }
-
-          scan.mresultScanner.releaseTempMemory();
 
           // Callback
           dummyRpc.callback(rows);
