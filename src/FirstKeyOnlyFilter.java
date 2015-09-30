@@ -31,6 +31,10 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.hbase.async.generated.FilterPB;
 import org.hbase.async.generated.HBasePB;
 
+import com.google.protobuf.ByteString;
+
+import com.mapr.fs.proto.Dbfilters.FirstKeyOnlyFilterProto;
+
 /**
  * A filter that will only return the first KV from each row.
  * This filter can be used to more efficiently perform row count operations.
@@ -73,4 +77,20 @@ public class FirstKeyOnlyFilter extends ScanFilter {
   public String toString() {
     return getClass().getSimpleName();
   }
+
+  // MapR addition
+  public static final int kFirstKeyOnlyFilter              = 0xf1482e61;
+
+  @Override
+  protected ByteString getState() {
+    return FirstKeyOnlyFilterProto.newBuilder()
+            .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kFirstKeyOnlyFilter);
+  }
+
+
 }

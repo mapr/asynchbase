@@ -31,6 +31,10 @@ import java.lang.UnsupportedOperationException;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+
+import com.mapr.fs.proto.Dbfilters.KeyOnlyFilterProto;
+
 /**
  * A filter that will only return the key component of each KV (the value will
  * be rewritten as empty).
@@ -83,5 +87,19 @@ public final class KeyOnlyFilter extends ScanFilter {
   public String toString() {
     return this.getClass().getSimpleName() + " "
         + "lenAsVal: " + (lenAsVal ? "true" : "false");
+  }
+
+  // MapR addition
+  public static final int kKeyOnlyFilter                   = 0xbe2b7415;
+
+  @Override
+  protected ByteString getState() {
+    return KeyOnlyFilterProto.newBuilder()
+            .setLenAsVal(lenAsVal).build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kKeyOnlyFilter);
   }
 }

@@ -31,6 +31,10 @@ import java.lang.UnsupportedOperationException;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.hbase.async.generated.FilterPB;
 
+import com.google.protobuf.ByteString;
+
+import com.mapr.fs.proto.Dbfilters.ColumnPaginationFilterProto;
+
 /**
  * A filter, based on the ColumnCountGetFilter, takes two arguments: limit and offset.
  * This filter can be used for row-based indexing, where references to other tables are
@@ -131,5 +135,22 @@ public final class ColumnPaginationFilter extends ScanFilter {
     return String.format("%s (%d, %d): predict:%d serialize:%d %s", this.getClass().getSimpleName(),
         this.limit, this.offset, predictSerializedSize(), serialize().length, Bytes.pretty(serialize()));
   }
+
+  // MapR addition
+  public static final int kColumnPaginationFilter          = 0x8285f556;
+
+  @Override
+  protected ByteString getState() {
+    return ColumnPaginationFilterProto.newBuilder()
+            .setLimit(limit)
+            .setOffset(offset)
+            .build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kColumnPaginationFilter);
+  }
+
 
 }

@@ -35,6 +35,9 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import java.lang.IllegalArgumentException;
 import java.util.Collection;
 
+import com.mapr.fs.proto.Dbfilters.BytesBytesPairProto;
+import com.mapr.fs.proto.Dbfilters.FuzzyRowFilterProto;
+
 /**
  * FuzzyRowFilter is a server-side fast-forward filter that allows skipping
  * whole range of rows when scanning. The feature is available in HBase
@@ -160,5 +163,29 @@ public final class FuzzyRowFilter extends ScanFilter {
       size +=  2 * ( 3 + filter.getRowKey().length );
     }
     return  size;
+  }
+
+  // MapR addition
+  public static final int kFuzzyRowFilter                  = 0xd5cd0f36;
+
+  @Override
+  protected ByteString getState() {
+    FuzzyRowFilterProto.Builder frfp = FuzzyRowFilterProto.newBuilder();
+    int fuzzyKeysCount = filter_pairs.size();
+
+    FuzzyFilterPair[] filterPairsArray = (FuzzyFilterPair[])filter_pairs.toArray();
+    for (int i = 0; i < fuzzyKeysCount; ++i) {
+      BytesBytesPairProto.Builder pairBuilder = BytesBytesPairProto.newBuilder();
+      pairBuilder.setFirst(Bytes.wrap(filterPairsArray[i].getRowKey()));
+      pairBuilder.setSecond(Bytes.wrap(filterPairsArray[i].getFuzzyMask()));
+      frfp.addFuzzyKeysData(pairBuilder.build());
+    }
+
+    return frfp.build().toByteString();
+  }
+
+  @Override
+  protected String getId() {
+    return getFilterId(kFuzzyRowFilter);
   }
 }
