@@ -171,13 +171,11 @@ public final class FuzzyRowFilter extends ScanFilter {
   @Override
   protected ByteString getState() {
     FuzzyRowFilterProto.Builder frfp = FuzzyRowFilterProto.newBuilder();
-    int fuzzyKeysCount = filter_pairs.size();
 
-    FuzzyFilterPair[] filterPairsArray = (FuzzyFilterPair[])filter_pairs.toArray();
-    for (int i = 0; i < fuzzyKeysCount; ++i) {
+    for (FuzzyFilterPair filter_pair : filter_pairs) {
       BytesBytesPairProto.Builder pairBuilder = BytesBytesPairProto.newBuilder();
-      pairBuilder.setFirst(Bytes.wrap(filterPairsArray[i].getRowKey()));
-      pairBuilder.setSecond(Bytes.wrap(filterPairsArray[i].getFuzzyMask()));
+      pairBuilder.setFirst(Bytes.wrap(filter_pair.getRowKey()));
+      pairBuilder.setSecond(Bytes.wrap(filter_pair.getFuzzyMask()));
       frfp.addFuzzyKeysData(pairBuilder.build());
     }
 

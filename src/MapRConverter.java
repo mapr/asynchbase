@@ -22,6 +22,7 @@ import com.mapr.fs.jni.MapRPut;
 import com.mapr.fs.jni.MapRResult;
 import com.mapr.fs.jni.MapRRowConstraint;
 import com.mapr.fs.jni.MapRScan;
+import com.mapr.fs.jni.MapRKeyValue;
 
 public class MapRConverter {
 
@@ -115,6 +116,71 @@ public class MapRConverter {
     }
   }
 
+  public static MapRPut toMapRPut(AppendRequest append, MapRHTable mtable) {
+    byte[][] families     = append.getFamilies();
+    byte[][][] qualifiers = append.getQualifiers();
+    byte[][][] values     = append.getValues();
+
+    int[] familyIds = new int[families.length];
+    int nCells = 0;
+    for (int i = 0; i < families.length; ++i) {
+      String family = Bytes.toString(families[i]);
+
+      try {
+        familyIds[i] = mtable.getFamilyId(family);
+      } catch (IOException ioe) {
+        throw new IllegalArgumentException("Invalid column family " +
+                                           family, ioe);
+      }
+
+      nCells += qualifiers[i].length;
+    }
+
+    byte[][][] sortedQuals = new byte[nCells][][];
+    byte[][][] sortedVals  = new byte[nCells][][];
+
+    if (nCells > 1) {
+      for (int i = 0; i < families.length; ++i) {
+        // sort by qualifiers
+        int cellsPerFamily = qualifiers[i].length;
+        Integer []cells = new Integer[cellsPerFamily];
+        for (int j = 0 ; j < cellsPerFamily; ++j) {
+          cells[j] = j;
+        }
+        sortedQuals[i] = new byte[cellsPerFamily][];
+        sortedVals[i]  = new byte[cellsPerFamily][];
+
+        final byte [][]quals = qualifiers[i];
+        final byte [][]vals  = values[i];
+
+        /* Pure java comparator from hbase */
+        Comparator<Integer> cmp = new Comparator<Integer>(){
+          public int compare(Integer i, Integer j) {
+            return compareTo(quals[i], 0, quals[i].length,
+                quals[j], 0, quals[j].length);
+          }
+        };
+
+        Arrays.sort(cells, cmp);
+
+        for (int j = 0; j < cellsPerFamily; ++j) {
+          int off = cells[j].intValue();
+          sortedQuals[i][j] = quals[off];
+          sortedVals[i][j]  = vals[off];
+        }
+      }
+
+      return new MapRPut(append.key(), familyIds,
+          sortedQuals, sortedVals, append.timestamp(), null,
+          /* original request = */ (Object)append, /* callback on = */ null);
+    } else {
+      return new MapRPut(append.key(), familyIds,
+          append.getQualifiers(), append.getValues(), append.timestamp(), null,
+          /* original request = */ (Object)append, /* callback on = */ null);
+    }
+  }
+
+
   public static MapRPut toMapRPut(DeleteRequest drpc, MapRHTable mTable) {
     MapRPut mput;
     if (drpc.getFamilies() != DeleteRequest.WHOLE_ROW) {
@@ -155,6 +221,11 @@ public class MapRConverter {
                                             RowConstants.DEFAULT_MIN_STAMP,
                                             RowConstants.DEFAULT_MAX_STAMP,
                                             get.maxVersions());
+
+      if (get.getFilterMsg() != null) {
+        mrget.setFilter(get.getFilterMsg().toByteArray());
+      }
+
       return mrget;
     } catch (IOException ioe) {
       throw new IllegalArgumentException("Invalid column families " + get.getFamilies(), ioe);
@@ -209,6 +280,62 @@ public class MapRConverter {
     rc.minStamp = RowConstants.DEFAULT_MIN_STAMP;
     rc.maxStamp = RowConstants.DEFAULT_MAX_STAMP;
     return rc;
+  }
+
+  public static ArrayList<KeyValue> toAsyncHBaseResult(MapRPut mput,
+                                                       byte[] key,
+                                                       MapRHTable htable) {
+    if (mput == null ||
+        mput.getKeyValues().length == 0) {
+      return new ArrayList<KeyValue> ();
+    }
+
+    String cfname;
+    ArrayList<KeyValue> cells = new ArrayList<KeyValue> (mput.getKeyValues().length);
+    int cellPos = 0;
+
+    MapRKeyValue[] mKeyVals = mput.keyvals;
+    for (int f = 0; f < mput.families.length; ++f) {
+      // get family name
+      try {
+        cfname = htable.getFamilyName(mput.families[f]);
+      } catch (IOException ioe) {
+        // AH TODO LOG error
+        if (key != null) {
+          LOG.error("Stale column family id: " + mput.families[f]);
+        } else {
+          LOG.error("Stale column family id: " + mput.families[f] +
+                    ", during append");
+        }
+        continue;
+      }
+
+      byte[] fname = cfname.getBytes();
+
+      for (int i = 0; i < mput.cellsPerFamily[f]; ++i) {
+        MapRKeyValue mKeyVal = mKeyVals[cellPos];
+        byte[] qual = mKeyVal.getQualifier();
+        byte[] val  = mKeyVal.getValue();
+
+        KeyValue kv = new KeyValue(key, fname, qual, mput.rowTimeStamp, val);
+        cells.add(kv);
+        cellPos++;
+      }
+    }
+
+    /*
+     *  Need to do this since within a MapR result, unlike HBase, KeyValue is
+     *  sorted on column family IDs (a number) instead of column family name.
+     *  This sort is guaranteed to be stable. Equal elements will not be
+     *  reordered as a result of the sort.
+     */
+     Collections.sort(cells, new Comparator<KeyValue>() {
+       @Override
+       public int compare(KeyValue kv1, KeyValue kv2) {
+         return Bytes.memcmp(kv1.family(), kv2.family());
+       }
+     });
+     return cells;
   }
 
   // From result -> async get()

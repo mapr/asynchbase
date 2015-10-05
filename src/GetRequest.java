@@ -33,6 +33,8 @@ import org.hbase.async.generated.ClientPB;
 import org.hbase.async.generated.FilterPB;
 import org.hbase.async.generated.HBasePB.TimeRange;
 
+import com.mapr.fs.proto.Dbfilters.FilterMsg;
+
 /**
  * Reads something from HBase.
  *
@@ -76,6 +78,8 @@ public final class GetRequest extends HBaseRpc
   /** When set in the `versions' field, this is an Exist RPC. */
   private static final int EXIST_FLAG = 0x1;
 
+  private FilterMsg filterMsg;
+
   /**
    * Constructor.
    * <strong>These byte arrays will NOT be copied.</strong>
@@ -84,6 +88,7 @@ public final class GetRequest extends HBaseRpc
    */
   public GetRequest(final byte[] table, final byte[] key) {
     super(table, key);
+    this.filterMsg = null;
   }
 
   /**
@@ -118,6 +123,7 @@ public final class GetRequest extends HBaseRpc
                     final byte[] family) {
     super(table, key);
     this.family(family);
+    this.filterMsg = null;
   }
 
   /**
@@ -150,6 +156,7 @@ public final class GetRequest extends HBaseRpc
     super(table, key);
     this.family(family);
     this.qualifier(qualifier);
+    this.filterMsg = null;
   }
 
   /**
@@ -168,6 +175,7 @@ public final class GetRequest extends HBaseRpc
     super(table, key);
     this.families(families);
     this.qualifiers(qualifiers);
+    this.filterMsg = null;
   }
 
   /**
@@ -198,6 +206,7 @@ public final class GetRequest extends HBaseRpc
                      final byte[] key) {
     super(table, key);
     this.versions |= EXIST_FLAG;
+    this.filterMsg = null;
   }
 
   /**
@@ -476,7 +485,19 @@ public final class GetRequest extends HBaseRpc
    */
   public GetRequest setFilter(final ScanFilter filter) {
     this.filter = filter;
+    if (isMapRTable) {
+      if (filter != null) {
+        filterMsg = filter.getFilterMsg();
+      } else {
+        filterMsg = null;
+      }
+    }
     return this;
+  }
+
+  // MapR addition
+  public FilterMsg getFilterMsg() {
+    return this.filterMsg;
   }
 
   /**

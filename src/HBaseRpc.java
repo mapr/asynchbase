@@ -480,6 +480,8 @@ public abstract class HBaseRpc {
   
   /** A reference to the last region client that handled this RPC */
   private RegionClient region_client;
+
+  protected boolean isMapRTable;
   
   /**
    * Set whether the RPC not be retried upon encountering a problem.
@@ -537,9 +539,11 @@ public abstract class HBaseRpc {
       // TODO: MapR
       KeyValue.checkTable(table);
       KeyValue.checkKey(key);
+      this.isMapRTable = false;
     }
     this.table = table;
     this.key = key;
+    this.isMapRTable = true;
   }
 
   /**

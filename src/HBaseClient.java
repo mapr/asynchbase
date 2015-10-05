@@ -1728,9 +1728,40 @@ public final class HBaseClient {
    */
   public Deferred<Object> append(final AppendRequest request) {
     num_appends.increment();
-    return sendRpcToRegion(request);
+
+    String tableStr = Bytes.toString(request.table());
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    if (p != null) {
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(request.table());
+        request.callback(e);
+        return Deferred.fromError(e);
+      }
+      final Deferred<Object> d = request.getDeferred();
+      mPool.sendRpc(request, mTable);
+      return d.addCallbacks(gotAppendResponse, Callback.PASSTHROUGH);
+    }
+
+    return sendRpcToRegion(request).addCallbacks(gotAppendResponse, Callback.PASSTHROUGH);
   }
-  
+
+   /** Singleton callback to handle responses of "append" RPCs.  */
+  private static final Callback<Object, Object> gotAppendResponse =
+    new Callback<Object, Object>() {
+      public Object call(final Object response) {
+        if (response instanceof ArrayList) {
+          return response;
+        } else {
+          throw new InvalidResponseException(ArrayList.class, response);
+        }
+      }
+      public String toString() {
+        return "type get response";
+      }
+    };
+ 
   /**
    * Atomic Compare-And-Set (CAS) on a single cell.
    * <p>
