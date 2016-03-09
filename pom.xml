@@ -239,12 +239,6 @@
 
     <!-- begin mapr dependecies -->
     <dependency>
-      <groupId>com.mapr.fs</groupId>
-      <artifactId>libprotodefs</artifactId>
-      <version>${mapr.release.version}</version>
-    </dependency>
-
-    <dependency>
       <groupId>com.mapr.hadoop</groupId>
       <artifactId>maprfs</artifactId>
       <version>${mapr.release.version}</version>
@@ -615,7 +609,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <skipTests>true</skipTests>
     <skipSigning>true</skipSigning>
-    <mapr.release.version>5.1.0-mapr-SNAPSHOT</mapr.release.version>
+    <mapr.release.version>5.1.0-mapr</mapr.release.version>
     <async.sourceDir>.mvn-compat/src/main/java</async.sourceDir>
     <async.testDir>.mvn-compat/src/test/java</async.testDir>
   </properties>
