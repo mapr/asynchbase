@@ -218,8 +218,8 @@ public class MapRConverter {
       mrget.result = new MapRResult();
       // set constraints
       mrget.rowConstraint = toRowConstraint(mtable, get.getFamilies(), get.getQualifiers(),
-                                            RowConstants.DEFAULT_MIN_STAMP,
-                                            RowConstants.DEFAULT_MAX_STAMP,
+                                            get.getMinTimestamp(),
+                                            get.getMaxTimestamp(),
                                             get.maxVersions());
 
       if (get.getFilterMsg() != null) {
