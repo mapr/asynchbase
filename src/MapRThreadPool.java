@@ -280,13 +280,14 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             MapRPut mput = MapRConverter.toMapRPut(arpc, mTable);
             mTable.append(mput, arpc.returnResult());
 
-            ArrayList<KeyValue> kvArr = new ArrayList<KeyValue>();
-
             if (arpc.returnResult()) {
+              ArrayList<KeyValue> kvArr = new ArrayList<KeyValue>();
               kvArr = MapRConverter.toAsyncHBaseResult(
                                                     mput, arpc.key(), mTable);
+              arpc.callback(kvArr);
             }
-            arpc.callback(kvArr);
+
+            arpc.callback(null);
           } catch (Exception e) {
             LOG.error("Exception in async append(): " + e.getMessage());
             rpc.callback(e);

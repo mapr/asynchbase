@@ -1751,7 +1751,8 @@ public final class HBaseClient {
   private static final Callback<Object, Object> gotAppendResponse =
     new Callback<Object, Object>() {
       public Object call(final Object response) {
-        if (response instanceof ArrayList) {
+        if (response == null ||
+            response instanceof ArrayList) {
           return response;
         } else {
           throw new InvalidResponseException(ArrayList.class, response);

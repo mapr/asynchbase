@@ -715,12 +715,7 @@ public final class AppendRequest extends BatchableRpc
     if (this.return_result) {
       final ArrayList<KeyValue> kvs = GetRequest.convertResult(result,
           buf, cell_size);
-      if (kvs.size() != 1) {
-        throw new InvalidResponseException("Atomic increment returned "
-          + kvs.size() + " KeyValue(s), but we expected exactly one. kvs="
-          + kvs, resp);
-      }
-      return kvs.get(0);
+      return kvs;
     } else {
       return null;
     }
