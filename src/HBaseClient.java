@@ -83,11 +83,15 @@ import org.slf4j.LoggerFactory;
 
 import com.google.common.cache.LoadingCache;
 import com.mapr.fs.MapRHTable;
+import com.mapr.fs.MapRTabletScanner;
 import com.mapr.fs.ShimLoader;
 import com.mapr.fs.jni.MapRPut;
+import com.mapr.fs.proto.Dbserver.TabletDesc;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
+import org.hbase.async.Bytes;
+import org.hbase.async.RegionLocation;
 import org.hbase.async.generated.ZooKeeperPB;
 
 /**
@@ -2053,9 +2057,68 @@ public final class HBaseClient {
    */
   private Deferred<Object> findTableRegions(final byte[] table,
                                         final byte[] start,
-                                        final byte[] stop, 
+                                        final byte[] stop,
                                         final boolean cache,
                                         final boolean return_locations) {
+
+    String tableStr = Bytes.toString(table);
+    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+
+    if (p != null) {
+      // Don't do anything if we are not going to return locations.
+      if (return_locations == false) {
+        return Deferred.fromResult(null);
+      }
+
+      final List<RegionLocation> regions = new ArrayList<RegionLocation>();
+      tableStr = p.toString();
+      MapRHTable mTable = getMapRTable(tableStr);
+      if (mTable == null) {
+        final Exception e = new TableNotFoundException(table);
+        return Deferred.fromError(e);
+      }
+
+      try {
+        MapRTabletScanner scanner = mTable.getTabletScanner();
+        List<TabletDesc> nextSet;
+        while ((nextSet = scanner.nextSet()) != null) {
+          for (TabletDesc tablet: nextSet) {
+            byte[] tabletSK = tablet.getStartKey().toByteArray();
+            byte[] tabletEK = tablet.getEndKey().toByteArray();
+            if (// a. Start row is empty(-INF) || start row less than tablet stop row AND
+                (Bytes.memcmp(start, EMPTY_ARRAY) == 0 ||
+                 Bytes.compareStopRows(start, tabletEK) < 0) &&
+                // b. Stop row is empty(+INF) || stop row > tablet start row
+                (Bytes.memcmp(stop, EMPTY_ARRAY) == 0 ||
+                 Bytes.compareStartRows(stop, tabletSK) > 0)) {
+              int cid = tablet.getFid().getCid();
+              RegionInfo rInfo = new RegionInfo(table, Bytes.fromInt(cid), tabletEK);
+              String host = mTable.getServerForCid(cid);
+              String [] tokens = host.split(":");
+              if (tokens == null || tokens.length != 2) {
+                final Exception e = new IOException("Bad host information for cid=" + cid +
+                                                    ", host=" + host);
+                return Deferred.fromError(e);
+              }
+
+             try {
+               int port = Integer.parseInt(tokens[1]);
+               regions.add(new RegionLocation(rInfo, tabletSK, tokens[0], port));
+             } catch (NumberFormatException e1) {
+               final Exception e = new IOException("Bad host information for cid=" + cid +
+                                                   ", host=" + host);
+               return Deferred.fromError(e);
+             }
+           }
+         }
+       }
+
+        return Deferred.fromResult((Object)regions);
+      } catch (Exception e) {
+        return Deferred.fromError(e);
+      }
+    }
+
     // We're going to scan .META. for the table between the row keys and filter
     // out all but the latest entries on the client side.  Whatever remains
     // will be inserted into the region cache.

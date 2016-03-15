@@ -694,4 +694,31 @@ public final class Bytes {
       return null;
     }
   }
+
+  public static final byte[] EMPTY_ARRAY = new byte[0];
+
+  public static int compareStartRows(byte[] left, byte[] right) {
+    // Empty array implies -INF for start rows
+    return Bytes.memcmp(left, right);
+  }
+  
+  public static int compareStopRows(byte[] left, byte[] right) {
+
+    // Empty array implies +INF for stop rows
+    boolean leftArrayEmpty = (Bytes.memcmp(left, EMPTY_ARRAY) == 0);
+    boolean rightArrayEmpty = (Bytes.memcmp(right, EMPTY_ARRAY) == 0);
+
+    // If left is +INF and right != +INF, then left > right 
+    if (leftArrayEmpty && !rightArrayEmpty) {
+      return 1;
+    }
+
+    // If right is +INF and left != +INF, then right > left
+    if (!leftArrayEmpty && rightArrayEmpty) {
+      return -1;
+    }
+
+    // Else, perform simple byte comparison
+    return Bytes.memcmp(left, right);
+  }
 }
