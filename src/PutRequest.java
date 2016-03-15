@@ -517,6 +517,7 @@ public final class PutRequest extends BatchableRpc
                      final long timestamp,
                      final long lockid) {
     super(table, key, families, timestamp, lockid);
+    checkParams(families, qualifiers, values, timestamps);
     this.qualifiers = qualifiers;
     this.values = values;
     this.timestamps = timestamps;
