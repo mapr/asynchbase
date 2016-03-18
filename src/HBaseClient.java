@@ -91,6 +91,7 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
 import org.hbase.async.Bytes;
+import org.hbase.async.MapRTableMappingRules;
 import org.hbase.async.RegionLocation;
 import org.hbase.async.generated.ZooKeeperPB;
 
@@ -487,8 +488,18 @@ public final class HBaseClient {
   private Configuration conf;
   private MapRThreadPool mPool;
   private MapRTableMappingRules mTableMappingRules;
+
+  private enum ConnectionType {
+    MAPR,
+    HBASE,
+    NONE
+  }
+
+  private ConnectionType connType;
+
   private boolean flushOnPut; // no buferring
   public static final String CONFIG_PARAM_FLUSH_ON_PUT = "fs.mapr.asynchbase.flushonput";
+  public static final String CONFIG_PARAM_DEFAULT_DB = "mapr.hbase.default.db";
 
   /**
    * Constructor.
@@ -556,6 +567,20 @@ public final class HBaseClient {
     mPool = new MapRThreadPool(conf);
     mTableMappingRules = new MapRTableMappingRules(conf);
     flushOnPut = conf.getBoolean(CONFIG_PARAM_FLUSH_ON_PUT, false);
+    String strType = config.getString(CONFIG_PARAM_DEFAULT_DB);
+
+    if (strType == null || strType.equals("none")) {
+      connType = ConnectionType.NONE;
+    } else if (ConnectionType.valueOf(strType.toUpperCase()) == ConnectionType.MAPR) {
+      connType = ConnectionType.MAPR;
+      LOG.warn("All HBase specific config parameters will be ignored for MapR-DB connection");
+    } else if (ConnectionType.valueOf(strType.toUpperCase()) == ConnectionType.HBASE) {
+      connType = ConnectionType.HBASE;
+    } else {
+      throw new IllegalArgumentException("Invalid connection type: " + strType);
+    }
+
+    LOG.debug("Connection Type: " + connType);
   }
 
   public MapRThreadPool getMapRThreadPool() {
@@ -761,6 +786,11 @@ public final class HBaseClient {
    * @since 1.7
    */
   public List<RegionClientStats> regionStats() {
+    if (connType == ConnectionType.MAPR) {
+      LOG.warn("regionStats() is not supported for MapR-DB connections");
+      return new ArrayList<RegionClientStats>();
+    }
+
     final Collection<RegionClient> region_clients = client2regions.keySet();
     final List<RegionClientStats> stats = 
         new ArrayList<RegionClientStats>(region_clients.size());
@@ -1203,19 +1233,17 @@ public final class HBaseClient {
       dummy = GetRequest.exists(table, probeKey(ZERO_ARRAY), family);
     }
 
-    String tableStr = Bytes.toString(table);
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      final Deferred<Object> d = dummy.getDeferred();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(table);
-        dummy.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(table);
+    } catch (TableNotFoundException e) {
+      dummy.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       mPool.sendRpc(dummy, mTable);
-      return d;
     }
 
     @SuppressWarnings("unchecked")
@@ -1268,16 +1296,16 @@ public final class HBaseClient {
   public Deferred<ArrayList<KeyValue>> get(final GetRequest request) {
     num_gets.increment();
 
-    String tableStr = Bytes.toString(request.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();  
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(request.table());
-        request.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(request.table());
+    } catch (TableNotFoundException e) {
+      request.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       final Deferred<Object> d = request.getDeferred();
       mPool.sendRpc(request, mTable);
       return d.addCallbacks(got, Callback.PASSTHROUGH);
@@ -1310,17 +1338,7 @@ public final class HBaseClient {
    */
   public Scanner newScanner(final byte[] table) {
     String tableStr = Bytes.toString(table);
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();  
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        throw new TableNotFoundException(table);
-      }
-      return new Scanner(this, table, mTable, mPool);
-    }
-
-    return new Scanner(this, table, mPool);
+    return newScanner(tableStr);
   }
 
   /**
@@ -1330,9 +1348,9 @@ public final class HBaseClient {
    * @return A new scanner for this table.
    */
   public Scanner newScanner(final String table) {
-    Path p = mTableMappingRules.getMapRTablePath(table);
-    if (p != null) {
-      MapRHTable mTable = getMapRTable(p.toString());
+    MapRHTable mTable = getMapRTable(table.getBytes());
+
+    if (mTable != null) {
       return new Scanner(this, table.getBytes(), mTable, mPool);
     }
 
@@ -1386,6 +1404,11 @@ public final class HBaseClient {
    * Returns the client currently known to hose the given region, or NULL.
    */
   private RegionClient clientFor(final RegionInfo region) {
+    if (connType == ConnectionType.MAPR) {
+      LOG.warn("clientFor() not supported for MapR-DB connections");
+      return null;
+    }
+
     if (region == null) {
       return null;
     } else if (region == META_REGION || Bytes.equals(region.table(), ROOT)) {
@@ -1429,23 +1452,21 @@ public final class HBaseClient {
    * The {@link Object} has not special meaning and can be {@code null}.
    */
   Deferred<Object> closeScanner(final Scanner scanner) {
-      
-    String tableStr = Bytes.toString(scanner.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();  
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(scanner.table());
-        return Deferred.fromError(e);
-      }
-      
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(scanner.table());
+    } catch (TableNotFoundException e) {
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       Deferred<Object> d = new Deferred<Object>();
       //d.addErrback(MapRGenericErrback(tableStr));
       mPool.closeScanner(d, mTable, scanner);
       return d;
     }
-    
+
     final RegionInfo region = scanner.currentRegion();
     final RegionClient client = clientFor(region);
     if (client == null) {
@@ -1474,16 +1495,16 @@ public final class HBaseClient {
   public Deferred<Long> atomicIncrement(final AtomicIncrementRequest request) {
     num_atomic_increments.increment();
 
-    String tableStr = Bytes.toString(request.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(request.table());
-        request.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(request.table());
+    } catch (TableNotFoundException e) {
+      request.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       final Deferred<Object> d = request.getDeferred();
       mPool.sendRpc(request, mTable);
       return d.addCallbacks(icv_done, Callback.PASSTHROUGH);
@@ -1687,16 +1708,16 @@ public final class HBaseClient {
   public Deferred<Object> put(final PutRequest request) {
     num_puts.increment();
 
-    String tableStr = Bytes.toString(request.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(request.table());
-        request.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(request.table());
+    } catch (TableNotFoundException e) {
+      request.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       final Deferred<Object> d = request.getDeferred();
       MapRPut mPut = MapRConverter.toMapRPut(request, mTable,
                                              mPool);
@@ -1733,16 +1754,15 @@ public final class HBaseClient {
   public Deferred<Object> append(final AppendRequest request) {
     num_appends.increment();
 
-    String tableStr = Bytes.toString(request.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(request.table());
-        request.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+    try {
+      mTable = getMapRTable(request.table());
+    } catch (TableNotFoundException e) {
+      request.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       final Deferred<Object> d = request.getDeferred();
       mPool.sendRpc(request, mTable);
       return d.addCallbacks(gotAppendResponse, Callback.PASSTHROUGH);
@@ -1797,16 +1817,16 @@ public final class HBaseClient {
   public Deferred<Boolean> compareAndSet(final PutRequest edit,
                                          final byte[] expected) {
 
-    String tableStr = Bytes.toString(edit.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(edit.table());
-        edit.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
+
+    try {
+      mTable = getMapRTable(edit.table());
+    } catch (TableNotFoundException e) {
+      edit.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       CompareAndSetRequest csr = new CompareAndSetRequest(edit, expected);
       Deferred<Object> d = csr.getDeferred();
       mPool.sendRpc(csr, mTable);
@@ -1814,7 +1834,7 @@ public final class HBaseClient {
     }
 
     return sendRpcToRegion(new CompareAndSetRequest(edit, expected))
-      .addCallback(CAS_CB);
+          .addCallback(CAS_CB);
   }
 
   /**
@@ -1886,7 +1906,7 @@ public final class HBaseClient {
     String tableStr = Bytes.toString(request.table());
     Path p = mTableMappingRules.getMapRTablePath(tableStr);
     if (p != null) {
-      throw new UnknownRowLockException("lockRow() and unlockRow() not supported for MapR Bolt tables", null);
+      throw new UnknownRowLockException("lockRow() and unlockRow() not supported for MapR-DB tables", null);
     }
 
     num_row_locks.increment();
@@ -1951,17 +1971,16 @@ public final class HBaseClient {
   public Deferred<Object> delete(final DeleteRequest request) {
     num_deletes.increment();
 
-    String tableStr = Bytes.toString(request.table());
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
-    if (p != null) {
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(request.table());
-        request.callback(e);
-        return Deferred.fromError(e);
-      }
+    MapRHTable mTable = null;
 
+    try {
+      mTable = getMapRTable(request.table());
+    } catch (TableNotFoundException e) {
+      request.callback(e);
+      return Deferred.fromError(e);
+    }
+
+    if (mTable != null) {
       final Deferred<Object> d = request.getDeferred();
       d.addErrback(MapRGenericErrback(mTable.getName()));
       mPool.sendRpc(request, mTable);
@@ -2061,26 +2080,18 @@ public final class HBaseClient {
                                         final boolean cache,
                                         final boolean return_locations) {
 
-    String tableStr = Bytes.toString(table);
-    Path p = mTableMappingRules.getMapRTablePath(tableStr);
+    MapRHTable mTable = null;
+    try {
+      mTable = getMapRTable(table);
+    } catch (TableNotFoundException e) {
+      return Deferred.fromError(e);
+    }
 
-    if (p != null) {
-      // Don't do anything if we are not going to return locations.
-      if (return_locations == false) {
-        return Deferred.fromResult(null);
-      }
-
-      final List<RegionLocation> regions = new ArrayList<RegionLocation>();
-      tableStr = p.toString();
-      MapRHTable mTable = getMapRTable(tableStr);
-      if (mTable == null) {
-        final Exception e = new TableNotFoundException(table);
-        return Deferred.fromError(e);
-      }
-
+    if (mTable != null) {
       try {
         MapRTabletScanner scanner = mTable.getTabletScanner();
         List<TabletDesc> nextSet;
+        final List<RegionLocation> regions = new ArrayList<RegionLocation>();
         while ((nextSet = scanner.nextSet()) != null) {
           for (TabletDesc tablet: nextSet) {
             byte[] tabletSK = tablet.getStartKey().toByteArray();
@@ -2101,17 +2112,17 @@ public final class HBaseClient {
                 return Deferred.fromError(e);
               }
 
-             try {
-               int port = Integer.parseInt(tokens[1]);
-               regions.add(new RegionLocation(rInfo, tabletSK, tokens[0], port));
-             } catch (NumberFormatException e1) {
-               final Exception e = new IOException("Bad host information for cid=" + cid +
-                                                   ", host=" + host);
-               return Deferred.fromError(e);
-             }
-           }
-         }
-       }
+              try {
+                int port = Integer.parseInt(tokens[1]);
+                regions.add(new RegionLocation(rInfo, tabletSK, tokens[0], port));
+              } catch (NumberFormatException e1) {
+                final Exception e2 = new IOException("Bad host information for cid=" + cid +
+                                                    ", host=" + host);
+                return Deferred.fromError(e2);
+              }
+            }
+          }
+        }
 
         return Deferred.fromResult((Object)regions);
       } catch (Exception e) {
@@ -2368,6 +2379,12 @@ public final class HBaseClient {
    * @throws TableNotFoundException if the row was empty
    */
   private RegionLocation toRegionLocation(final ArrayList<KeyValue> meta_row) {
+
+    if (connType == ConnectionType.MAPR) {
+      LOG.error("toRegionLocation() not supported for MapR-DB connection");
+      return null;
+    }
+
     // TODO - there's a fair bit of duplication here with the discoverRegion()
     // code. Try cleaning it up.
     if (meta_row.isEmpty()) {
@@ -4151,19 +4168,30 @@ public final class HBaseClient {
     return port;
   }
 
-  public MapRHTable getMapRTable(final String table) {
-    // If found in cache return
-    if (MapRHTableCache.containsKey(table))
-      return MapRHTableCache.get(table);
+  private MapRHTable getMapRTable(final byte[] table) throws TableNotFoundException {
+    String tableStr = Bytes.toString(table);
+    if (connType == ConnectionType.MAPR || connType == ConnectionType.NONE) {
+      Path p = mTableMappingRules.getMapRTablePath(Bytes.toString(table));
+      if (p != null) {
+        // If found in cache return
+        if (MapRHTableCache.containsKey(p.toString())) {
+          return MapRHTableCache.get(tableStr);
+        }
 
-    // Otherwise do open
-    MapRHTable mTable = new MapRHTable();
-    try {
-      mTable.init(this.conf, new Path(table));
-      MapRHTableCache.put(table, mTable);
-    } catch (Exception e) {
-      return null;
+        // Otherwise do open
+        MapRHTable mTable = new MapRHTable();
+        try {
+          mTable.init(this.conf, p);
+          MapRHTableCache.put(p.toString(), mTable);
+        } catch (Exception e) {
+          throw new TableNotFoundException(p.toString().getBytes());
+        }
+        return mTable;
+      } else if (connType == ConnectionType.MAPR) {
+        throw new TableNotFoundException(table);
+      }
     }
-    return mTable;
+
+    return null;
   }
 }

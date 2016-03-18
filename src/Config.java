@@ -26,6 +26,8 @@
  */
 package org.hbase.async;
 
+import java.io.File;
+import java.io.InputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -33,6 +35,8 @@ import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.net.URL;
+import java.net.URISyntaxException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,6 +82,10 @@ public class Config {
    */
   public Config() {
     loadSystemAndDefaults();
+    try {
+      InputStream file_stream = this.getClass().getClassLoader().getResourceAsStream("asynchbase.conf");
+      loadConfig(file_stream);
+    } catch (IOException e) { }
   }
 
   /**
@@ -355,18 +363,26 @@ public class Config {
    */
   protected void loadConfig(final String file) throws FileNotFoundException,
       IOException {
-    final FileInputStream file_stream = new FileInputStream(file);
+    final InputStream file_stream = new FileInputStream(file);
+    loadConfig(file_stream);
+
+    // no exceptions thrown, so save the valid path and exit
+    LOG.info("Successfully loaded configuration file: " + file);
+    config_location = file;
+  }
+
+  private void loadConfig(InputStream file_stream) throws IOException {
+    if (file_stream == null) {
+      throw new IOException("File stream is null");
+    }
+
     try {
       final Properties props = new Properties();
       props.load(file_stream);
   
       // load the hash map
       loadHashMap(props);
-  
-      // no exceptions thrown, so save the valid path and exit
-      LOG.info("Successfully loaded configuration file: " + file);
-      config_location = file;
-    } finally {
+   } finally {
       file_stream.close();
     }
   }
