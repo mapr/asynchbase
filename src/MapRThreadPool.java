@@ -347,7 +347,7 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             mTable.delete(mput);
             drpc.callback(null);
           } catch (Exception e) {
-            LOG.error("Exception in async CompareAndSetRequest: " + e.getMessage());
+            LOG.error("Exception in async DeleteRequest: " + e.getMessage());
             rpc.callback(e);
             Deferred.fromError(e);
             return;
