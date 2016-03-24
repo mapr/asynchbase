@@ -490,7 +490,7 @@ public final class HBaseClient {
   private MapRTableMappingRules mTableMappingRules;
 
   private enum ConnectionType {
-    MAPR,
+    MAPRDB,
     HBASE,
     NONE
   }
@@ -571,8 +571,8 @@ public final class HBaseClient {
 
     if (strType == null || strType.equals("none")) {
       connType = ConnectionType.NONE;
-    } else if (ConnectionType.valueOf(strType.toUpperCase()) == ConnectionType.MAPR) {
-      connType = ConnectionType.MAPR;
+    } else if (ConnectionType.valueOf(strType.toUpperCase()) == ConnectionType.MAPRDB) {
+      connType = ConnectionType.MAPRDB;
       LOG.warn("All HBase specific config parameters will be ignored for MapR-DB connection");
     } else if (ConnectionType.valueOf(strType.toUpperCase()) == ConnectionType.HBASE) {
       connType = ConnectionType.HBASE;
@@ -786,7 +786,7 @@ public final class HBaseClient {
    * @since 1.7
    */
   public List<RegionClientStats> regionStats() {
-    if (connType == ConnectionType.MAPR) {
+    if (connType == ConnectionType.MAPRDB) {
       LOG.warn("regionStats() is not supported for MapR-DB connections");
       return new ArrayList<RegionClientStats>();
     }
@@ -1404,7 +1404,7 @@ public final class HBaseClient {
    * Returns the client currently known to hose the given region, or NULL.
    */
   private RegionClient clientFor(final RegionInfo region) {
-    if (connType == ConnectionType.MAPR) {
+    if (connType == ConnectionType.MAPRDB) {
       LOG.warn("clientFor() not supported for MapR-DB connections");
       return null;
     }
@@ -2380,7 +2380,7 @@ public final class HBaseClient {
    */
   private RegionLocation toRegionLocation(final ArrayList<KeyValue> meta_row) {
 
-    if (connType == ConnectionType.MAPR) {
+    if (connType == ConnectionType.MAPRDB) {
       LOG.error("toRegionLocation() not supported for MapR-DB connection");
       return null;
     }
@@ -4170,7 +4170,7 @@ public final class HBaseClient {
 
   private MapRHTable getMapRTable(final byte[] table) throws TableNotFoundException {
     String tableStr = Bytes.toString(table);
-    if (connType == ConnectionType.MAPR || connType == ConnectionType.NONE) {
+    if (connType == ConnectionType.MAPRDB || connType == ConnectionType.NONE) {
       Path p = mTableMappingRules.getMapRTablePath(Bytes.toString(table));
       if (p != null) {
         // If found in cache return
@@ -4187,7 +4187,7 @@ public final class HBaseClient {
           throw new TableNotFoundException(p.toString().getBytes());
         }
         return mTable;
-      } else if (connType == ConnectionType.MAPR) {
+      } else if (connType == ConnectionType.MAPRDB) {
         throw new TableNotFoundException(table);
       }
     }
