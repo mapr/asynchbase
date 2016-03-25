@@ -1243,7 +1243,9 @@ public final class HBaseClient {
     }
 
     if (mTable != null) {
+      final Deferred<Object> d = dummy.getDeferred();
       mPool.sendRpc(dummy, mTable);
+      return d;
     }
 
     @SuppressWarnings("unchecked")
