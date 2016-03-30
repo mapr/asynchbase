@@ -196,15 +196,16 @@ public class MapRConverter {
         }
       }
 
-      if (drpc.deleteAtTimestampOnly()) {
-        mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
-                            /*values*/null, drpc.timestamp(), /*timestamps*/null,
-                            PutConstants.TYPE_DELETE_CELLS_EXACT_ASYNC);
-      } else {
+      // Uncomment this when we enable support for v5.2
+      //if (drpc.deleteAtTimestampOnly()) {
+      //  mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
+      //                      /*values*/null, drpc.timestamp(), /*timestamps*/null,
+      //                      PutConstants.TYPE_DELETE_CELLS_EXACT_ASYNC);
+      //} else {
         mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
                             /*values*/null, drpc.timestamp(), /*timestamps*/null,
                             PutConstants.TYPE_DELETE_CELLS_ASYNC);
-      }
+      //}
     } else {
       mput =  new MapRPut(drpc.key(), /*familyIds*/null, /*qualifiers*/null, 
                           /*values*/null, drpc.timestamp(), /*timestamps*/null,
