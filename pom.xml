@@ -6,7 +6,7 @@
 
   <groupId>org.hbase</groupId>
   <artifactId>asynchbase</artifactId>
-  <version>1.7.0-mapr-1603-SNAPSHOT</version>
+  <version>1.7.0-mapr-1603</version>
   <name>Asynchronous HBase Client</name>
   <organization>
     <name>The Async HBase Authors</name>
@@ -323,7 +323,7 @@
         <property><name>!hadoop.profile</name></property>
       </activation>
       <properties>
-        <hadoop2.version>2.5.1-mapr-1501-SNAPSHOT</hadoop2.version>
+        <hadoop2.version>2.5.1-mapr-1501</hadoop2.version>
       </properties>
       <dependencies>
         <dependency>
