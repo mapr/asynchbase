@@ -15,6 +15,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mapr.fs.MapRHTable;
 import com.mapr.fs.MapRResultScanner;
 import com.mapr.fs.jni.MapRConstants.PutConstants;
@@ -104,11 +105,17 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
                   1, // time to wait before reducing threads, if more then coreSz
                   TimeUnit.HOURS,
                   new LinkedBlockingQueue<Runnable>(),
+                  new ThreadFactoryBuilder().setNameFormat("MapRDB-Main-%d").build(),
                   new ThreadPoolExecutor.CallerRunsPolicy());
     // Start minimum number of threads in pool.
     for (int i = 0; i < workerThreads; i++) {
       pool.execute(new RpcRunnable());
     }
+
+    // All the threads in the scanpool will work on the scan requests in this
+    // queue. If the max threads are hit, then they block for a thread to get
+    // done and pick them up.
+    this.scanRequestQueue = new LinkedBlockingQueue<MapRScanPlus>();
 
     // Separate threadpool for Scanner.
     scanpool = new ThreadPoolExecutor(
@@ -117,16 +124,12 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
                   1,// time to wait before reducing threads, if more then coreSz
                   TimeUnit.HOURS,
                   new LinkedBlockingQueue<Runnable>(),
+                  new ThreadFactoryBuilder().setNameFormat("MapRDB-Scan-%d").build(),
                   new ThreadPoolExecutor.CallerRunsPolicy());
     // Start minimum number of threads in pool.
     for (int i = 0; i < MIN_SCAN_THREADS; i++) {
       scanpool.execute(new ScanRpcRunnable(this));
     }
-
-    // All the threads in the scanpool will work on the scan requests in this
-    // queue. If the max threads are hit, then they block for a thread to get
-    // done and pick them up.
-    this.scanRequestQueue = new LinkedBlockingQueue<MapRScanPlus>();
   }
 
   public boolean hasRemainingCapacity() {
@@ -174,8 +177,9 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
   public void runCallbackChain(LinkedList<Object> requests, LinkedList<Object> responses) {
     try {
       pool.execute(new CallBackRunnable(requests, responses));
-    } catch(Exception e) {
-      // AH TODO handle rejection exception
+    } catch(Throwable e) {
+      // we do not want the MapR-RPC threads to die, hence we catch all Throwable
+      LOG.error("Exception in async runCallbackChain: " + e.getMessage(), e);
     }
   }
 
@@ -430,7 +434,7 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             ++num_rows;
           }
 
-          if (num_rows == 0) {
+          if (num_rows == 0) { // no more rows, end of scan
             if (dummyRpc != null) {
               dummyRpc.callback(null);
             }
@@ -450,12 +454,16 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
 
           // Callback
           dummyRpc.callback(rows);
-        } catch (Exception e) {
+        } catch (StackOverflowError e) {
+          // Can happen if the callback chain run really deep, see Bug 23881.
+          LOG.debug(String.format("ScanRpcRunnable::StackOverflowError: {}, ThreadId: {}",
+              e.getMessage(), Thread.currentThread().getId()), e);
+        } catch (Throwable e) { // do not let the thread die
+          LOG.error(String.format("ScanRpcRunnable::{}: {}, ThreadId: {}",
+              e.getClass().getSimpleName(), e.getMessage(), Thread.currentThread().getId()), e);
           if (dummyRpc != null) {
-            LOG.error("Exception in scanner thread: " + e.getMessage() + 
-                "thrd=" + Thread.currentThread().getId());
             dummyRpc.callback(e);
-            Deferred.fromError(e);
+            Deferred.fromError(e instanceof Exception ? (Exception) e : new Exception(e));
           }
         }
       }
@@ -479,8 +487,8 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
             HBaseRpc rpc = (HBaseRpc) request;
             rpc.callback(result);
           }
-        } catch (Exception e) {
-          // ignore
+        } catch(Throwable e) {
+          LOG.error("Exception in async CallBackRunnable.run(): " + e.getMessage(), e);
         }
       }
     }
