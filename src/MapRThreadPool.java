@@ -231,6 +231,9 @@ public class MapRThreadPool implements com.mapr.fs.jni.MapRCallBackQueue {
 
             ArrayList<KeyValue> kvArr =
                MapRConverter.toAsyncHBaseResult(result, grpc.key(), mTable);
+            if (mGet.getArena() != 0) {
+              mTable.freeArena(mGet.getArena());
+            }
             grpc.callback(kvArr);
           } catch (IllegalArgumentException ie) {
 
