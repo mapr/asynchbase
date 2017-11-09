@@ -822,7 +822,40 @@ public final class DeleteRequest extends BatchableRpc
         columns.clear();
         columns.setFamily(Bytes.wrap(family));    // ... for this family.
 
-        if (qualifiers != null) {
+        if (qualifiers == null) {
+          /* Delete the family request format
+          region {
+            type: REGION_NAME
+            value: "tablename,,1510082347389.2a04737d31bf5c2213993995c49fc4e8."
+          }
+          mutation {
+            row: "row0"
+            mutate_type: DELETE
+            column_value {
+              family: "fam1"
+              qualifier_value {
+                qualifier: ""
+                value: ""
+                timestamp: 9223372036854775807
+                delete_type: DELETE_FAMILY
+              }
+            }
+            timestamp: 9223372036854775807
+            durability: USE_DEFAULT
+          }
+          */
+
+          final MutationProto.DeleteType type = MutationProto.DeleteType.DELETE_FAMILY;
+          final MutationProto.ColumnValue.QualifierValue column =
+              MutationProto.ColumnValue.QualifierValue.newBuilder()
+              .setQualifier(Bytes.wrap(HBaseClient.EMPTY_ARRAY))
+              .setValue(Bytes.wrap(HBaseClient.EMPTY_ARRAY))
+              .setTimestamp(timestamp)
+              .setDeleteType(type)
+              .build();
+          columns.addQualifierValue(column);
+
+        } else { //qualifiers != null
           final boolean has_timestamps =
               (timestamps != null && timestamps[i] != null);
           final MutationProto.DeleteType type =
