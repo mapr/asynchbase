@@ -60,7 +60,7 @@ public final class DeleteRequest extends BatchableRpc
   static final byte CODE = 31;
 
   /** Special value for {@link #qualifiers} when deleting a whole family.  */
-  private static final byte[][] DELETE_FAMILY_MARKER =
+  public static final byte[][] DELETE_FAMILY_MARKER =
     new byte[][] { HBaseClient.EMPTY_ARRAY };
 
   /** Special value for {@link #families} when deleting a whole row.  */

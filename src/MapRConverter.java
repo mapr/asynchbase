@@ -186,6 +186,10 @@ public class MapRConverter {
     if (drpc.getFamilies() != DeleteRequest.WHOLE_ROW) {
       byte[][] families = drpc.getFamilies();
       int[] familyIds = new int[families.length];
+
+      byte[][][] qualifiers = new byte[families.length][][];
+      byte[][][] drpcQuals = drpc.getQualifiers();
+
       for (int i = 0; i < families.length; i ++) {
         String family = Bytes.toString(families[i]);
         try {
@@ -194,14 +198,20 @@ public class MapRConverter {
           throw new IllegalArgumentException("Invalid column family " +
                                              family, ioe);
         }
+        if (drpcQuals == null || drpcQuals[i] == null) {
+          // delete the entire family
+          qualifiers[i] = DeleteRequest.DELETE_FAMILY_MARKER;
+        } else {
+          qualifiers[i] = drpcQuals[i];
+        }
       }
 
       if (drpc.deleteAtTimestampOnly()) {
-        mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
+        mput =  new MapRPut(drpc.key(), familyIds, qualifiers,
                             /*values*/null, drpc.timestamp(), /*timestamps*/null,
                             PutConstants.TYPE_DELETE_CELLS_EXACT_ASYNC);
       } else {
-        mput =  new MapRPut(drpc.key(), familyIds, drpc.getQualifiers(), 
+        mput =  new MapRPut(drpc.key(), familyIds, qualifiers,
                             /*values*/null, drpc.timestamp(), /*timestamps*/null,
                             PutConstants.TYPE_DELETE_CELLS_ASYNC);
       }
