@@ -32,6 +32,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.TreeSet;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -42,9 +43,12 @@ import org.slf4j.LoggerFactory;
 import com.mapr.fs.MapRHTable;
 import com.mapr.fs.MapRResultScanner;
 import com.mapr.fs.proto.Dbfilters.FilterMsg;
+
 import com.mapr.fs.jni.MapRScan;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+
+import static com.mapr.org.apache.hadoop.hbase.util.Bytes.BYTES_COMPARATOR;
 
 import org.hbase.async.generated.ClientPB.Column;
 import org.hbase.async.generated.ClientPB.Scan;
@@ -406,9 +410,7 @@ public final class Scanner {
    */
   public void setQualifiers(final byte[][] qualifiers) {
     checkScanningNotStarted();
-    for (final byte[] qualifier : qualifiers) {
-      KeyValue.checkQualifier(qualifier);
-    }
+    Arrays.sort(qualifiers, BYTES_COMPARATOR);
     this.qualifiers = new byte[][][] { qualifiers };
   }
 
