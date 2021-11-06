@@ -84,6 +84,7 @@ git://git.apache.org/incubator-sentry git@github.com:mapr/incubator-sentry.git i
 git@github.com:apache/sentry.git git@github.com:mapr/sentry.git sentry
 git@github.com:apache/sentry.git git@github.com:mapr/private-sentry.git private-sentry
 git@github.com:apache/spark.git git@github.com:mapr/spark.git spark
+git@github.com:swagger-api/swagger-core.git git@github.com:mapr/private-swagger-core.git swagger
 git@github.com:apache/spark.git git@github.com:mapr/private-spark.git private-spark
 git@github.com:apache/sqoop.git git@github.com:mapr/sqoop.git sqoop
 git@github.com:apache/sqoop.git git@github.com:mapr/private-sqoop.git private-sqoop
