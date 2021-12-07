@@ -110,7 +110,7 @@ git@github.com:confluentinc/kafka-connect-jdbc.git git@github.com:mapr/kafka-con
 git@github.com:confluentinc/kafka-connect-jdbc.git git@github.com:mapr/private-kafka-connect-jdbc.git private-kafka-connect-jdbc
 git@github.com:confluentinc/kafka-connect-storage-common.git git@github.com:mapr/kafka-connect-storage-common.git kafka-storage-common
 git@github.com:confluentinc/kafka-connect-storage-common.git git@github.com:mapr/private-kafka-connect-storage-common.git private-kafka-storage-common
-git@github.com:confluentinc/kafka-connect-hdfs.git git@github.com:mapr/private-kafka-connect-hdfs.git private-kafka-connect-hdfs"
+git@github.com:confluentinc/kafka-connect-hdfs.git git@github.com:mapr/private-kafka-connect-hdfs.git private-kafka-connect-hdfs
 git@github.com:apache/log4j.git git@github.com:mapr/private-log4j.git private-log4j"
 
 if [ ${TEST} -eq 1 ]; then
