@@ -112,7 +112,8 @@ git@github.com:confluentinc/kafka-connect-storage-common.git git@github.com:mapr
 git@github.com:confluentinc/kafka-connect-storage-common.git git@github.com:mapr/private-kafka-connect-storage-common.git private-kafka-storage-common
 git@github.com:confluentinc/kafka-connect-hdfs.git git@github.com:mapr/private-kafka-connect-hdfs.git private-kafka-connect-hdfs
 git@github.com:apache/log4j.git git@github.com:mapr/private-log4j.git private-log4j
-git@github.com:apache/log4j-extras.git git@github.com:mapr/private-log4j-extras.git private-log4j-extras"
+git@github.com:apache/log4j-extras.git git@github.com:mapr/private-log4j-extras.git private-log4j-extras
+git@github.com:eclipse-vertx/vert.x.git git@github.com:mapr/private-vert.x.git private-vert.x"
 
 if [ ${TEST} -eq 1 ]; then
     TUPLES="git@github.com:OpenTSDB/asynchbase.git git@github.com:mapr/asynchbase.git asynchbase"
