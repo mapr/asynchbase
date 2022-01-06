@@ -73,6 +73,7 @@ git@github.com:mongodb/mongo-java-driver.git git@github.com:mapr/ebson.git ebson
 git@github.com:mongodb/mongo-java-driver.git git@github.com:mapr/private-ebson.git private-ebson
 git@github.com:apache/mahout.git git@github.com:mapr/mahout.git mahout
 git@github.com:apache/mahout.git git@github.com:mapr/private-mahout.git private-mahout
+git@github.com:apache/nifi.git git@github.com:mapr/private-nifi.git private-nifi
 git@github.com:apache/oozie.git git@github.com:mapr/oozie.git oozie
 git@github.com:apache/oozie.git git@github.com:mapr/private-oozie.git private-oozie
 git@github.com:OpenTSDB/opentsdb.git git@github.com:mapr/opentsdb.git opentsdb
