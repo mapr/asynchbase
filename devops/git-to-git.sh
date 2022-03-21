@@ -47,6 +47,7 @@ git@github.com:gperftools/gperftools.git git@github.com:mapr/gperftools.git gper
 git@github.com:gperftools/gperftools.git git@github.com:mapr/private-gperftools.git private-gperftools
 https://git-wip-us.apache.org/repos/asf/hadoop.git git@github.com:mapr/private-hadoop-common.git private-hadoop-common
 https://git-wip-us.apache.org/repos/asf/hadoop.git git@github.com:mapr/hadoop-common.git hadoop-common
+git@github.com:apache/hadoop-thirdparty.git git@github.com:mapr/private-hadoop-thirdparty.git private-hadoop-thirdparty
 git@github.com:apache/hbase.git git@github.com:mapr/hbase.git hbase
 git@github.com:apache/hbase.git git@github.com:mapr/private-hbase.git private-hbase
 git@github.com:apache/hbase.git git@github.com:mapr/hbase-git.git hbase-git
