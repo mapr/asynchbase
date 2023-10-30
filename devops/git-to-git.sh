@@ -74,6 +74,7 @@ git@github.com:mongodb/mongo-java-driver.git git@github.com:mapr/ebson.git ebson
 git@github.com:mongodb/mongo-java-driver.git git@github.com:mapr/private-ebson.git private-ebson
 git@github.com:apache/mahout.git git@github.com:mapr/mahout.git mahout
 git@github.com:apache/mahout.git git@github.com:mapr/private-mahout.git private-mahout
+git@github.com:apache/nifi.git git@github.com:mapr/nifi.git nifi
 git@github.com:apache/nifi.git git@github.com:mapr/private-nifi.git private-nifi
 git@github.com:oauth2-proxy/oauth2-proxy.git git@github.com:mapr/private-oauth2-proxy.git private-oauth2-proxy
 git@github.com:apache/oozie.git git@github.com:mapr/oozie.git oozie
@@ -82,6 +83,7 @@ git@github.com:OpenTSDB/opentsdb.git git@github.com:mapr/opentsdb.git opentsdb
 git@github.com:OpenTSDB/opentsdb.git git@github.com:mapr/private-opentsdb.git private-opentsdb
 git@github.com:apache/pig.git git@github.com:mapr/pig.git pig
 git@github.com:apache/pig.git git@github.com:mapr/private-pig.git private-pig
+git@github.com:apache/ranger.git git@github.com:mapr/ranger.git ranger
 git@github.com:apache/ranger.git git@github.com:mapr/private-ranger.git private-ranger
 git://git.apache.org/incubator-sentry git@github.com:mapr/incubator-sentry.git incubator-sentry
 git@github.com:apache/sentry.git git@github.com:mapr/sentry.git sentry
