@@ -25,16 +25,16 @@ mkdir -pv $GITWORKSPACE
 # 3. WORKSPACE repo (only needed for uniqueness, it could actually be anything, and in theory it should be safe for all tuples to use the same value for every tuple, but I don't want to test that theory)
 TUPLES="git@github.com:OpenTSDB/asynchbase.git git@github.com:mapr/asynchbase.git asynchbase
 git@github.com:OpenTSDB/asynchbase.git git@github.com:mapr/private-asynchbase.git private-asynchbase
-git@github.com:dpkp/kafka-python.git git@github.com:mapr/kafka-python.git kafka-python
-git@github.com:confluentinc/confluent-kafka-dotnet.git git@github.com:mapr/confluent-kafka-dotnet.git confluent-kafka-dotnet
-git@github.com:confluentinc/confluent-kafka-go.git git@github.com:mapr/confluent-kafka-go.git  confluent-kafka-go
-git@github.com:confluentinc/librdkafka.git git@github.com:mapr/librdkafka.git librdkafka
+git@github.com:confluentinc/confluent-kafka-python.git git@github.com:mapr/confluent-kafka-python.git confluent-kafka-python
 git@github.com:confluentinc/confluent-kafka-python.git git@github.com:mapr/private-confluent-kafka-python.git private-confluent-kafka-python
 git@github.com:dpkp/kafka-python.git git@github.com:mapr/private-kafka-python.git private-kafka-python
 git@github.com:confluentinc/confluent-kafka-dotnet.git git@github.com:mapr/private-confluent-kafka-dotnet.git private-confluent-kafka-dotnet
 git@github.com:confluentinc/confluent-kafka-go.git git@github.com:mapr/private-confluent-kafka-go.git private-confluent-kafka-go
 git@github.com:confluentinc/librdkafka.git git@github.com:mapr/private-librdkafka.git private-librdkafka
-git@github.com:confluentinc/confluent-kafka-python.git git@github.com:mapr/confluent-kafka-python.git confluent-kafka-python
+git@github.com:dpkp/kafka-python.git git@github.com:mapr/kafka-python.git kafka-python
+git@github.com:confluentinc/confluent-kafka-dotnet.git git@github.com:mapr/confluent-kafka-dotnet.git confluent-kafka-dotnet
+git@github.com:confluentinc/confluent-kafka-go.git git@github.com:mapr/confluent-kafka-go.git  confluent-kafka-go
+git@github.com:confluentinc/librdkafka.git git@github.com:mapr/librdkafka.git librdkafka
 git@github.com:Cascading/cascading.git git@github.com:mapr/cascading.git cascading
 git@github.com:Cascading/cascading.git git@github.com:mapr/private-cascading.git private-cascading
 git@github.com:Cascading/cascading.samples.git git@github.com:mapr/cascading.samples.git cascading.samples
